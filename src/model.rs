@@ -59,3 +59,40 @@ pub struct VirtualDesktop {
     pub enforcement_modes: HashMap<u32, bool>,
     pub stack_windows: Vec<u64>,
 }
+
+impl VirtualDesktop {
+    pub fn new(id: u32) -> Self {
+        VirtualDesktop {
+            id,
+            layout_presets: HashMap::new(),
+            enforcement_modes: HashMap::new(),
+            stack_windows: Vec::new(),
+        }
+    }
+
+    pub fn set_layout(&mut self, monitor_id: u32, preset: LayoutPreset) {
+        self.layout_presets.insert(monitor_id, preset);
+    }
+
+    pub fn get_layout(&self, monitor_id: u32) -> Option<LayoutPreset> {
+        self.layout_presets.get(&monitor_id).copied()
+    }
+
+    pub fn set_enforcement(&mut self, monitor_id: u32, enforced: bool) {
+        self.enforcement_modes.insert(monitor_id, enforced);
+    }
+
+    pub fn is_enforced(&self, monitor_id: u32) -> bool {
+        self.enforcement_modes.get(&monitor_id).copied().unwrap_or(false)
+    }
+
+    /// Add a window to the front of the stack. If already present, move it to front.
+    pub fn push_window(&mut self, window_id: u64) {
+        self.stack_windows.retain(|&id| id != window_id);
+        self.stack_windows.insert(0, window_id);
+    }
+
+    pub fn remove_window(&mut self, window_id: u64) {
+        self.stack_windows.retain(|&id| id != window_id);
+    }
+}
