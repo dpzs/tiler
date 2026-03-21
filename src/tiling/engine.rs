@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::gnome::dbus_proxy::{GnomeProxy, MonitorInfo, ProxyResult};
+use crate::menu::state::{MenuAction, MenuInput, MenuState};
 use crate::model::{LayoutPreset, Rect, VirtualDesktop};
 use crate::tiling::preset::{apply_fullscreen, apply_quadrants, apply_side_by_side, apply_top_bottom};
 use crate::tiling::stack::stack_layout;
@@ -22,6 +23,7 @@ pub struct TilingEngine<P: GnomeProxy> {
     windows: HashMap<u64, TrackedWindow>,
     desktops: HashMap<u32, VirtualDesktop>,
     active_workspace: u32,
+    menu: MenuState,
 }
 
 impl<P: GnomeProxy> TilingEngine<P> {
@@ -33,6 +35,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             windows: HashMap::new(),
             desktops: HashMap::new(),
             active_workspace: 0,
+            menu: MenuState::Closed,
         }
     }
 
@@ -289,6 +292,99 @@ impl<P: GnomeProxy> TilingEngine<P> {
         self.proxy
             .move_resize_window(window_id, expected.x, expected.y, expected.width, expected.height)
             .await?;
+
+        Ok(())
+    }
+
+    /// Returns the current menu state.
+    pub fn menu_state(&self) -> MenuState {
+        self.menu
+    }
+
+    /// Process a menu input, transitioning state and executing any resulting action.
+    pub async fn handle_menu_input(&mut self, input: MenuInput) -> ProxyResult<()> {
+        let (new_state, action) = self.menu.transition(input);
+        self.menu = new_state;
+
+        if let Some(action) = action {
+            match action {
+                MenuAction::Dismiss | MenuAction::ZoomIn(_) => {}
+                MenuAction::MoveWindow(_target_monitor) => {}
+                MenuAction::ApplyLayout(monitor_id, digit) => {
+                    let preset = match digit {
+                        1 => LayoutPreset::Fullscreen,
+                        2 => LayoutPreset::SideBySide,
+                        3 => LayoutPreset::TopBottom,
+                        4 => LayoutPreset::Quadrants,
+                        _ => return Ok(()),
+                    };
+                    let ws = self.active_workspace;
+                    self.desktop(ws).set_layout(monitor_id, preset);
+                    self.apply_layout_to_monitor(ws, monitor_id).await?;
+                }
+                MenuAction::EnforceOn(monitor_id) => {
+                    let ws = self.active_workspace;
+                    self.desktop(ws).set_enforcement(monitor_id, true);
+                }
+                MenuAction::EnforceOff(monitor_id) => {
+                    let ws = self.active_workspace;
+                    self.desktop(ws).set_enforcement(monitor_id, false);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Apply the current layout preset for a monitor, positioning all windows.
+    async fn apply_layout_to_monitor(
+        &mut self,
+        workspace_id: u32,
+        monitor_id: u32,
+    ) -> ProxyResult<()> {
+        let desktop = match self.desktops.get(&workspace_id) {
+            Some(d) => d,
+            None => return Ok(()),
+        };
+
+        let preset = match desktop.get_layout(monitor_id) {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+
+        let monitor_rect = match self.monitors.iter().find(|m| m.id == monitor_id) {
+            Some(m) => Rect {
+                x: m.x,
+                y: m.y,
+                width: m.width,
+                height: m.height,
+            },
+            None => return Ok(()),
+        };
+
+        let window_ids: Vec<u64> = desktop
+            .stack_windows
+            .iter()
+            .filter(|&&wid| {
+                self.windows
+                    .get(&wid)
+                    .is_some_and(|w| w.monitor_id == monitor_id)
+            })
+            .copied()
+            .collect();
+
+        let positions = match preset {
+            LayoutPreset::Fullscreen => apply_fullscreen(&window_ids, monitor_rect),
+            LayoutPreset::SideBySide => apply_side_by_side(&window_ids, monitor_rect),
+            LayoutPreset::TopBottom => apply_top_bottom(&window_ids, monitor_rect),
+            LayoutPreset::Quadrants => apply_quadrants(&window_ids, monitor_rect),
+        };
+
+        for (id, rect) in positions {
+            self.proxy
+                .move_resize_window(id, rect.x, rect.y, rect.width, rect.height)
+                .await?;
+        }
 
         Ok(())
     }
