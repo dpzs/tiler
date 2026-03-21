@@ -1,0 +1,254 @@
+use tiler::model::Rect;
+use tiler::tiling::preset::{apply_fullscreen, apply_side_by_side, apply_top_bottom, apply_quadrants};
+
+// ---------------------------------------------------------------------------
+// Helper
+// ---------------------------------------------------------------------------
+
+fn monitor() -> Rect {
+    Rect { x: 0, y: 0, width: 1920, height: 1080 }
+}
+
+// ===========================================================================
+// Fullscreen
+// ===========================================================================
+
+#[test]
+fn test_fullscreen_single_window() {
+    // Arrange
+    let ids = vec![1];
+    let m = monitor();
+
+    // Act
+    let result = apply_fullscreen(&ids, m);
+
+    // Assert
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].0, 1);
+    assert_eq!(result[0].1, m, "single window fills monitor");
+}
+
+#[test]
+fn test_fullscreen_empty() {
+    // Arrange / Act
+    let result = apply_fullscreen(&[], monitor());
+
+    // Assert
+    assert!(result.is_empty());
+}
+
+#[test]
+fn test_fullscreen_excess_windows() {
+    // Arrange — preset has 1 slot, but 3 windows given
+    let ids = vec![10, 20, 30];
+
+    // Act
+    let result = apply_fullscreen(&ids, monitor());
+
+    // Assert — only first window gets positioned
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].0, 10);
+}
+
+// ===========================================================================
+// SideBySide
+// ===========================================================================
+
+#[test]
+fn test_side_by_side_two_windows() {
+    // Arrange
+    let ids = vec![1, 2];
+    let m = monitor();
+
+    // Act
+    let result = apply_side_by_side(&ids, m);
+
+    // Assert
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].0, 1);
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 960, height: 1080 });
+    assert_eq!(result[1].0, 2);
+    assert_eq!(result[1].1, Rect { x: 960, y: 0, width: 960, height: 1080 });
+}
+
+#[test]
+fn test_side_by_side_single_window() {
+    // Arrange — fewer windows than slots
+    let ids = vec![5];
+    let m = monitor();
+
+    // Act
+    let result = apply_side_by_side(&ids, m);
+
+    // Assert — only 1 window positioned (left half)
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].0, 5);
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 960, height: 1080 });
+}
+
+#[test]
+fn test_side_by_side_empty() {
+    let result = apply_side_by_side(&[], monitor());
+    assert!(result.is_empty());
+}
+
+#[test]
+fn test_side_by_side_excess_windows() {
+    // Arrange — 2 slots, 4 windows
+    let ids = vec![1, 2, 3, 4];
+
+    // Act
+    let result = apply_side_by_side(&ids, monitor());
+
+    // Assert — only first 2 get positioned
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].0, 1);
+    assert_eq!(result[1].0, 2);
+}
+
+// ===========================================================================
+// TopBottom
+// ===========================================================================
+
+#[test]
+fn test_top_bottom_two_windows() {
+    // Arrange
+    let ids = vec![1, 2];
+    let m = monitor();
+
+    // Act
+    let result = apply_top_bottom(&ids, m);
+
+    // Assert
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].0, 1);
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 1920, height: 540 });
+    assert_eq!(result[1].0, 2);
+    assert_eq!(result[1].1, Rect { x: 0, y: 540, width: 1920, height: 540 });
+}
+
+#[test]
+fn test_top_bottom_single_window() {
+    let ids = vec![7];
+    let m = monitor();
+
+    let result = apply_top_bottom(&ids, m);
+
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].0, 7);
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 1920, height: 540 });
+}
+
+#[test]
+fn test_top_bottom_empty() {
+    let result = apply_top_bottom(&[], monitor());
+    assert!(result.is_empty());
+}
+
+#[test]
+fn test_top_bottom_excess_windows() {
+    let ids = vec![1, 2, 3];
+    let result = apply_top_bottom(&ids, monitor());
+    assert_eq!(result.len(), 2);
+}
+
+// ===========================================================================
+// Quadrants
+// ===========================================================================
+
+#[test]
+fn test_quadrants_four_windows() {
+    // Arrange
+    let ids = vec![1, 2, 3, 4];
+    let m = monitor();
+
+    // Act
+    let result = apply_quadrants(&ids, m);
+
+    // Assert — 2x2 grid
+    assert_eq!(result.len(), 4);
+
+    // Top-left
+    assert_eq!(result[0].0, 1);
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 960, height: 540 });
+
+    // Top-right
+    assert_eq!(result[1].0, 2);
+    assert_eq!(result[1].1, Rect { x: 960, y: 0, width: 960, height: 540 });
+
+    // Bottom-left
+    assert_eq!(result[2].0, 3);
+    assert_eq!(result[2].1, Rect { x: 0, y: 540, width: 960, height: 540 });
+
+    // Bottom-right
+    assert_eq!(result[3].0, 4);
+    assert_eq!(result[3].1, Rect { x: 960, y: 540, width: 960, height: 540 });
+}
+
+#[test]
+fn test_quadrants_two_windows() {
+    // Arrange — fewer than 4
+    let ids = vec![1, 2];
+    let m = monitor();
+
+    // Act
+    let result = apply_quadrants(&ids, m);
+
+    // Assert — only first 2 slots filled (top-left, top-right)
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 960, height: 540 });
+    assert_eq!(result[1].1, Rect { x: 960, y: 0, width: 960, height: 540 });
+}
+
+#[test]
+fn test_quadrants_single_window() {
+    let ids = vec![1];
+    let result = apply_quadrants(&ids, monitor());
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 960, height: 540 });
+}
+
+#[test]
+fn test_quadrants_empty() {
+    let result = apply_quadrants(&[], monitor());
+    assert!(result.is_empty());
+}
+
+#[test]
+fn test_quadrants_excess_windows() {
+    let ids = vec![1, 2, 3, 4, 5, 6];
+    let result = apply_quadrants(&ids, monitor());
+    assert_eq!(result.len(), 4, "only 4 slots available");
+}
+
+#[test]
+fn test_quadrants_three_windows() {
+    // Arrange — 3 windows, 4 slots: top-left, top-right, bottom-left filled
+    let ids = vec![1, 2, 3];
+    let m = monitor();
+
+    let result = apply_quadrants(&ids, m);
+
+    assert_eq!(result.len(), 3);
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 960, height: 540 });
+    assert_eq!(result[1].1, Rect { x: 960, y: 0, width: 960, height: 540 });
+    assert_eq!(result[2].1, Rect { x: 0, y: 540, width: 960, height: 540 });
+}
+
+// ===========================================================================
+// Screen offset
+// ===========================================================================
+
+#[test]
+fn test_preset_with_screen_offset() {
+    // Arrange — monitor not at origin
+    let m = Rect { x: 1920, y: 0, width: 1920, height: 1080 };
+    let ids = vec![1, 2];
+
+    // Act
+    let result = apply_side_by_side(&ids, m);
+
+    // Assert — positions offset by monitor x
+    assert_eq!(result[0].1, Rect { x: 1920, y: 0, width: 960, height: 1080 });
+    assert_eq!(result[1].1, Rect { x: 2880, y: 0, width: 960, height: 1080 });
+}
