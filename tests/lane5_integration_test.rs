@@ -222,7 +222,7 @@ async fn should_handle_full_ipc_command_sequence() {
 
     let proxy = make_proxy(two_monitors(), vec![]);
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None).await
+        run_daemon(proxy, &sock2, 0, None, None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -382,7 +382,7 @@ async fn should_shutdown_via_signal_after_processing_commands() {
 
     let proxy = make_proxy(two_monitors(), vec![]);
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, Some(rx)).await
+        run_daemon(proxy, &sock2, 0, Some(rx), None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 

@@ -30,6 +30,7 @@ pub struct TilingEngine<P: GnomeProxy> {
     windows: HashMap<u64, TrackedWindow>,
     desktops: HashMap<u32, VirtualDesktop>,
     active_workspace: u32,
+    focused_window_id: Option<u64>,
     menu: MenuState,
 }
 
@@ -46,6 +47,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             windows: HashMap::new(),
             desktops: HashMap::new(),
             active_workspace: 0,
+            focused_window_id: None,
             menu: MenuState::Closed,
         }
     }
@@ -322,7 +324,9 @@ impl<P: GnomeProxy> TilingEngine<P> {
         if let Some(action) = action {
             match action {
                 MenuAction::Dismiss | MenuAction::ZoomIn(_) => {}
-                MenuAction::MoveWindow(_target_monitor) => {}
+                MenuAction::MoveWindow(target_monitor) => {
+                    self.move_window_to_monitor(target_monitor).await?;
+                }
                 MenuAction::ApplyLayout(monitor_id, digit) => {
                     let preset = match digit {
                         1 => LayoutPreset::Fullscreen,
@@ -409,6 +413,66 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
     /// Returns a read-only reference to the virtual desktop for `ws`, or `None` if it
     /// has not been created yet.
+    /// Move the currently focused window to the target monitor.
+    ///
+    /// No-op if no window is focused or the target monitor does not exist.
+    /// Calls `proxy.move_resize_window` to fill the target monitor, updates
+    /// the tracked window's `monitor_id`, moves it between desktop stacks,
+    /// and retiles the stack screen.
+    pub async fn move_window_to_monitor(&mut self, target_monitor: u32) -> ProxyResult<()> {
+        // Get focused window, no-op if None
+        let window_id = match self.focused_window_id {
+            Some(id) => id,
+            None => return Ok(()),
+        };
+
+        // Look up target monitor geometry, no-op if not found
+        let target_rect = match self.monitors.iter().find(|m| m.id == target_monitor) {
+            Some(m) => (m.x, m.y, m.width, m.height),
+            None => return Ok(()),
+        };
+
+        // Get the window's current workspace and source monitor
+        let (workspace_id, source_monitor) = match self.windows.get(&window_id) {
+            Some(w) => (w.workspace_id, w.monitor_id),
+            None => return Ok(()),
+        };
+
+        // Move the window to fill the target monitor
+        self.proxy
+            .move_resize_window(window_id, target_rect.0, target_rect.1, target_rect.2, target_rect.3)
+            .await?;
+
+        // Update tracked window's monitor_id
+        if let Some(w) = self.windows.get_mut(&window_id) {
+            w.monitor_id = target_monitor;
+        }
+
+        // If the stack screen is the source monitor, remove from stack and retile
+        if source_monitor == self.stack_screen_index as u32 {
+            self.desktop(workspace_id).remove_window(window_id);
+            self.tile_stack(workspace_id).await?;
+        }
+
+        // If the stack screen is the target monitor, add to stack and retile
+        if target_monitor == self.stack_screen_index as u32 {
+            self.desktop(workspace_id).push_window(window_id);
+            self.tile_stack(workspace_id).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Returns the currently focused window ID, or `None` if no window has focus.
+    pub fn focused_window_id(&self) -> Option<u64> {
+        self.focused_window_id
+    }
+
+    /// Updates the focused window ID. Called when the compositor reports a focus change.
+    pub fn handle_focus_changed(&mut self, window_id: u64) {
+        self.focused_window_id = Some(window_id);
+    }
+
     pub fn desktop_ref(&self, ws: u32) -> Option<&VirtualDesktop> {
         self.desktops.get(&ws)
     }

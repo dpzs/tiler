@@ -94,6 +94,32 @@ run_test "module references cfg.keybinding" \
 run_test "flake.nix exports nixosModules" \
   grep -q "nixosModules" "$FLAKE"
 
+# -- Additional structural checks --
+
+run_test "module sets RestartSec" \
+  grep -q "RestartSec" "$MODULE"
+
+run_test "module uses mkIf cfg.enable guard" \
+  grep -q "mkIf cfg.enable" "$MODULE"
+
+run_test "module references partOf graphical-session.target" \
+  grep -q "partOf" "$MODULE"
+
+run_test "module references wantedBy graphical-session.target" \
+  grep -q "wantedBy" "$MODULE"
+
+run_test "flake.nix imports module.nix" \
+  grep -q "module.nix" "$FLAKE"
+
+# -- Conditional nix eval --
+
+if command -v nix &>/dev/null; then
+  run_test "nix eval: module tests pass" \
+    nix eval --file "$REPO/nix/tests/test-module.nix"
+else
+  printf "SKIP: nix eval (nix not available)\n"
+fi
+
 # -- 7. Cargo tests still pass --
 
 run_test "Cargo test suite passes" \
