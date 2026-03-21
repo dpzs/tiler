@@ -22,7 +22,7 @@ async fn main() {
     let result = match cli.command {
         Commands::Daemon => {
             let proxy = MockGnomeProxy::new();
-            run_daemon(proxy, &sock, 0, None).await.map(|_| None)
+            run_daemon(proxy, &sock, 0, None, None).await.map(|_| None)
         }
         Commands::Menu => send_command(&sock, Command::Menu).await.map(Some),
         Commands::Status => send_command(&sock, Command::Status).await.map(Some),
