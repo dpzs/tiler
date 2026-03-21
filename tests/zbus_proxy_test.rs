@@ -1,4 +1,5 @@
-use tiler::gnome::dbus_proxy::{MonitorInfo, WindowInfo};
+use tiler::gnome::dbus_proxy::{GnomeProxy, MonitorInfo, WindowInfo};
+use tiler::gnome::zbus_proxy::ZbusGnomeProxy;
 
 // --- WindowInfo serde roundtrip ---
 
@@ -128,4 +129,20 @@ fn should_deserialize_json_array_to_vec_monitor_info() {
     assert_eq!(monitors[0].width, 1920);
     assert_eq!(monitors[1].name, "DP-1");
     assert_eq!(monitors[1].x, 1920);
+}
+
+// --- ZbusGnomeProxy compile-time verification ---
+
+fn assert_gnome_proxy<T: GnomeProxy>() {}
+
+fn assert_send<T: Send>() {}
+
+#[test]
+fn should_implement_gnome_proxy_trait() {
+    assert_gnome_proxy::<ZbusGnomeProxy>();
+}
+
+#[test]
+fn should_implement_send() {
+    assert_send::<ZbusGnomeProxy>();
 }
