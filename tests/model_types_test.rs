@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use tiler::model::{LayoutPreset, Monitor, Rect, VirtualDesktop, Window};
+use tiler::model::{LayoutPreset, Monitor, Rect, VirtualDesktop, Window, WindowType};
 
 // ---------------------------------------------------------------------------
 // Rect
@@ -193,6 +193,7 @@ fn test_window_construction() {
         tile_position: Rect { x: 0, y: 0, width: 960, height: 1080 },
         virtual_desktop_id: 0,
         is_fullscreen: false,
+        window_type: WindowType::Normal,
     };
 
     // Assert
@@ -216,6 +217,7 @@ fn test_window_clone() {
         tile_position: Rect { x: 0, y: 0, width: 1920, height: 1080 },
         virtual_desktop_id: 0,
         is_fullscreen: true,
+        window_type: WindowType::Normal,
     };
 
     // Act
@@ -236,6 +238,7 @@ fn test_window_json_roundtrip() {
         tile_position: Rect { x: 960, y: 0, width: 960, height: 1080 },
         virtual_desktop_id: 1,
         is_fullscreen: false,
+        window_type: WindowType::Normal,
     };
 
     // Act

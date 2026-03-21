@@ -20,6 +20,14 @@ pub enum LayoutPreset {
     Quadrants,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WindowType {
+    Normal,
+    Dialog,
+    Popup,
+    Splash,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Window {
     pub id: u64,
@@ -29,6 +37,7 @@ pub struct Window {
     pub tile_position: Rect,
     pub virtual_desktop_id: u32,
     pub is_fullscreen: bool,
+    pub window_type: WindowType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
