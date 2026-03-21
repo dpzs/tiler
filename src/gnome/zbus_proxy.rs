@@ -1,6 +1,9 @@
+use futures_lite::StreamExt;
+use tokio::sync::mpsc;
 use zbus::proxy;
 
 use super::dbus_proxy::{GnomeProxy, MonitorInfo, ProxyResult, WindowInfo};
+use super::event::Event;
 
 #[proxy(
     interface = "org.gnome.Shell.Extensions.Tiler",
@@ -71,6 +74,97 @@ impl ZbusGnomeProxy {
         let connection = zbus::Connection::session().await?;
         let proxy = TilerProxy::new(&connection).await?;
         Ok(Self { proxy })
+    }
+
+    /// Spawn a background task that subscribes to all D-Bus signals and
+    /// forwards them as `Event` variants through `tx`.
+    pub fn spawn_signal_listener(&self, tx: mpsc::UnboundedSender<Event>) {
+        let proxy = self.proxy.clone();
+        tokio::spawn(async move {
+            let (
+                mut window_opened,
+                mut window_closed,
+                mut focus_changed,
+                mut workspace_changed,
+                mut fullscreen_changed,
+                mut geometry_changed,
+                mut menu_key,
+            ) = match tokio::try_join!(
+                proxy.receive_window_opened(),
+                proxy.receive_window_closed(),
+                proxy.receive_window_focus_changed(),
+                proxy.receive_workspace_changed(),
+                proxy.receive_window_fullscreen_changed(),
+                proxy.receive_window_geometry_changed(),
+                proxy.receive_menu_key_pressed(),
+            ) {
+                Ok(streams) => streams,
+                Err(_) => return,
+            };
+
+            loop {
+                tokio::select! {
+                    Some(signal) = window_opened.next() => {
+                        if let Ok(args) = signal.args() {
+                            let _ = tx.send(Event::WindowOpened {
+                                window_id: args.window_id,
+                                title: args.title.to_string(),
+                                app_class: args.app_class.to_string(),
+                            });
+                        }
+                    }
+                    Some(signal) = window_closed.next() => {
+                        if let Ok(args) = signal.args() {
+                            let _ = tx.send(Event::WindowClosed {
+                                window_id: args.window_id,
+                            });
+                        }
+                    }
+                    Some(signal) = focus_changed.next() => {
+                        if let Ok(args) = signal.args() {
+                            let _ = tx.send(Event::WindowFocusChanged {
+                                window_id: args.window_id,
+                            });
+                        }
+                    }
+                    Some(signal) = workspace_changed.next() => {
+                        if let Ok(args) = signal.args() {
+                            let _ = tx.send(Event::WorkspaceChanged {
+                                workspace_id: args.workspace_id,
+                            });
+                        }
+                    }
+                    Some(signal) = fullscreen_changed.next() => {
+                        if let Ok(args) = signal.args() {
+                            let _ = tx.send(Event::WindowFullscreenChanged {
+                                window_id: args.window_id,
+                                is_fullscreen: args.is_fullscreen,
+                            });
+                        }
+                    }
+                    Some(signal) = geometry_changed.next() => {
+                        if let Ok(args) = signal.args() {
+                            let _ = tx.send(Event::WindowGeometryChanged {
+                                window_id: args.window_id,
+                                x: args.x,
+                                y: args.y,
+                                width: args.width,
+                                height: args.height,
+                            });
+                        }
+                    }
+                    Some(signal) = menu_key.next() => {
+                        if let Ok(args) = signal.args() {
+                            let _ = tx.send(Event::MenuKeyPressed {
+                                key: args.key.to_string(),
+                                modifiers: args.modifiers.to_string(),
+                            });
+                        }
+                    }
+                    else => break,
+                }
+            }
+        });
     }
 }
 
