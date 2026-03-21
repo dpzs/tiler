@@ -1,0 +1,108 @@
+{
+  "name": "Rust Agent",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  // Match host user so file ownership and Wayland auth work
+  "containerUser": "dev",
+  "remoteUser": "dev",
+  // Wayland + GPU
+  "runArgs": [
+    "--security-opt=label=disable",
+    "--device=/dev/dri"
+  ],
+  "containerEnv": {
+    "WAYLAND_DISPLAY": "${localEnv:WAYLAND_DISPLAY}",
+    "XDG_RUNTIME_DIR": "/run/user/1001",
+    "XDG_SESSION_TYPE": "wayland",
+    "GDK_BACKEND": "wayland",
+    "QT_QPA_PLATFORM": "wayland",
+    "MOZ_ENABLE_WAYLAND": "1",
+    "CARGO_HOME": "/home/dev/.cargo",
+    "RUSTUP_HOME": "/home/dev/.rustup",
+    "SSH_AUTH_SOCK": "/tmp/host-ssh-agent.sock"
+  },
+  "mounts": [
+    // Claude Code config — bind-mount host .claude into container
+    {
+      "type": "bind",
+      "source": "${localEnv:HOME}/.claude",
+      "target": "/home/dev/.claude"
+    },
+    // Codex config — bind-mount host .codex into container
+    {
+      "type": "bind",
+      "source": "${localEnv:HOME}/.codex",
+      "target": "/home/dev/.codex"
+    },
+    // Wayland socket from host compositor
+    {
+      "type": "bind",
+      "source": "${localEnv:XDG_RUNTIME_DIR}/${localEnv:WAYLAND_DISPLAY}",
+      "target": "/run/user/1001/${localEnv:WAYLAND_DISPLAY}"
+    },
+    // Host SSH agent — forwards YubiKey and other host keys into container
+    {
+      "type": "bind",
+      "source": "${localEnv:SSH_AUTH_SOCK}",
+      "target": "/tmp/host-ssh-agent.sock"
+    },
+    // Named volume for cargo registry — survives rebuilds, fast I/O
+    {
+      "type": "volume",
+      "source": "rust-agent-cargo-registry",
+      "target": "/home/dev/.cargo/registry"
+    },
+    // Named volume for cargo git checkouts
+    {
+      "type": "volume",
+      "source": "rust-agent-cargo-git",
+      "target": "/home/dev/.cargo/git"
+    },
+    // Named volume for rustup toolchains
+    {
+      "type": "volume",
+      "source": "rust-agent-rustup",
+      "target": "/home/dev/.rustup"
+    },
+    // Named volume for target dir — keeps build artifacts off bind mount
+    {
+      "type": "volume",
+      "source": "rust-agent-target",
+      "target": "/workspaces/rust-agent/target"
+    }
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb",
+        "serayuzgur.crates",
+        "fill-labs.dependi",
+        "usernamehw.errorlens"
+      ],
+      "settings": {
+        "rust-analyzer.server.path": "rust-analyzer",
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.cargo.buildScripts.enable": true,
+        "rust-analyzer.procMacro.enable": true,
+        "editor.formatOnSave": true,
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        }
+      }
+    }
+  },
+  "features": {
+    // Git inside the container
+    "ghcr.io/devcontainers/features/git:1": {},
+    // GitHub CLI
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "postStartCommand": "rustc --version && cargo --version",
+  "forwardPorts": [],
+  "shutdownAction": "stopContainer"
+}
