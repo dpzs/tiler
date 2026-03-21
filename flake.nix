@@ -18,9 +18,21 @@
       tiler = import ./nix/package.nix {
         inherit craneLib pkgs muslTarget muslRustFlags;
       };
+
+      tiler-gnome-extension = pkgs.callPackage ./nix/gnome-extension.nix {
+        extensionSrc = ./extension;
+      };
     in
     {
-      packages.${system}.default = tiler;
+      packages.${system} = {
+        default = tiler;
+        tiler = tiler;
+        gnome-extension = tiler-gnome-extension;
+      };
+
+      nixosModules.default = import ./nix/module.nix {
+        inherit self;
+      };
 
       devShells.${system}.default = craneLib.devShell {
         packages = with pkgs; [
