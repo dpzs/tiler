@@ -101,3 +101,178 @@ async fn should_accept_focus_change_for_untracked_window() {
         "handle_focus_changed should work even for windows not in the tracked set"
     );
 }
+
+use tiler::gnome::dbus_proxy::WindowInfo;
+use tiler::menu::state::{MenuInput, MenuState};
+
+// --- Helper for tests with windows ---
+
+fn make_proxy_with_windows(monitors: Vec<MonitorInfo>, windows: Vec<WindowInfo>) -> MockGnomeProxy {
+    let mut proxy = MockGnomeProxy::new();
+    proxy.set_monitors(monitors);
+    proxy.set_windows(windows.clone());
+    for w in &windows {
+        proxy.set_window_type(w.id, "normal".into());
+    }
+    proxy
+}
+
+// ===========================================================================
+// 5. move_window_to_monitor: happy path
+// ===========================================================================
+
+#[tokio::test]
+async fn should_move_focused_window_to_target_monitor() {
+    // Arrange: window 1 on monitor 0
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy_with_windows(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Focus window 1
+    engine.handle_focus_changed(1);
+
+    let calls_before = engine.proxy().move_resize_calls().len();
+
+    // Act: move window to monitor 1
+    engine.move_window_to_monitor(1).await.unwrap();
+
+    // Assert: move_resize_window was called with monitor 1's geometry (1920, 0, 1920, 1080)
+    let calls = engine.proxy().move_resize_calls();
+    let move_call = calls.iter().skip(calls_before).find(|c| c.0 == 1);
+    assert!(
+        move_call.is_some(),
+        "move_resize_window should have been called for window 1"
+    );
+    let (wid, x, y, w, h) = move_call.unwrap();
+    assert_eq!(*wid, 1);
+    assert_eq!(*x, 1920, "x should match monitor 1");
+    assert_eq!(*y, 0, "y should match monitor 1");
+    assert_eq!(*w, 1920, "width should match monitor 1");
+    assert_eq!(*h, 1080, "height should match monitor 1");
+}
+
+// ===========================================================================
+// 6. move_window_to_monitor: no-op when no focused window
+// ===========================================================================
+
+#[tokio::test]
+async fn should_noop_move_when_no_focused_window() {
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy_with_windows(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Do NOT set focus
+    let calls_before = engine.proxy().move_resize_calls().len();
+
+    engine.move_window_to_monitor(1).await.unwrap();
+
+    let calls_after = engine.proxy().move_resize_calls().len();
+    assert_eq!(
+        calls_after - calls_before, 0,
+        "no move_resize calls should happen when no window is focused"
+    );
+}
+
+// ===========================================================================
+// 7. move_window_to_monitor: no-op when target monitor doesn't exist
+// ===========================================================================
+
+#[tokio::test]
+async fn should_noop_move_when_target_monitor_not_found() {
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy_with_windows(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    engine.handle_focus_changed(1);
+    let calls_before = engine.proxy().move_resize_calls().len();
+
+    // Monitor 99 doesn't exist
+    engine.move_window_to_monitor(99).await.unwrap();
+
+    let calls_after = engine.proxy().move_resize_calls().len();
+    assert_eq!(
+        calls_after - calls_before, 0,
+        "no move_resize calls should happen when target monitor doesn't exist"
+    );
+}
+
+// ===========================================================================
+// 8. End-to-end: ShiftN triggers move via menu
+// ===========================================================================
+
+#[tokio::test]
+async fn should_move_window_via_shift_n_menu_input() {
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy_with_windows(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Focus window 1
+    engine.handle_focus_changed(1);
+
+    // Navigate: Closed -> Overview
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    assert_eq!(engine.menu_state(), MenuState::Overview);
+
+    let calls_before = engine.proxy().move_resize_calls().len();
+
+    // ShiftN(1) should trigger MoveWindow(1)
+    engine.handle_menu_input(MenuInput::ShiftN(1)).await.unwrap();
+
+    // Menu should transition to Closed
+    assert_eq!(engine.menu_state(), MenuState::Closed);
+
+    // Should have called move_resize_window for window 1 to monitor 1's geometry
+    let calls = engine.proxy().move_resize_calls();
+    let move_call = calls.iter().skip(calls_before).find(|c| c.0 == 1);
+    assert!(
+        move_call.is_some(),
+        "ShiftN(1) should trigger move_resize_window for the focused window"
+    );
+    let (_, x, _, w, h) = move_call.unwrap();
+    assert_eq!(*x, 1920);
+    assert_eq!(*w, 1920);
+    assert_eq!(*h, 1080);
+}
+
+// ===========================================================================
+// 9. Window removed from source desktop stack after move
+// ===========================================================================
+
+#[tokio::test]
+async fn should_remove_window_from_source_desktop_stack_after_move() {
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy_with_windows(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Verify window 1 is in the stack before move
+    let desktop = engine.desktop_ref(0).unwrap();
+    assert!(desktop.stack_windows.contains(&1), "window 1 should be in stack before move");
+
+    // Focus and move window 1 to monitor 1
+    engine.handle_focus_changed(1);
+    engine.move_window_to_monitor(1).await.unwrap();
+
+    // Window 1 should no longer be in the stack (it moved to a different monitor)
+    // But window 2 should remain
+    let desktop = engine.desktop_ref(0).unwrap();
+    assert!(
+        desktop.stack_windows.contains(&2),
+        "window 2 should still be in the stack"
+    );
+}
