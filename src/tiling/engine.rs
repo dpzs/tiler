@@ -30,6 +30,7 @@ pub struct TilingEngine<P: GnomeProxy> {
     windows: HashMap<u64, TrackedWindow>,
     desktops: HashMap<u32, VirtualDesktop>,
     active_workspace: u32,
+    focused_window_id: Option<u64>,
     menu: MenuState,
 }
 
@@ -46,6 +47,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             windows: HashMap::new(),
             desktops: HashMap::new(),
             active_workspace: 0,
+            focused_window_id: None,
             menu: MenuState::Closed,
         }
     }
@@ -409,6 +411,16 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
     /// Returns a read-only reference to the virtual desktop for `ws`, or `None` if it
     /// has not been created yet.
+    /// Returns the currently focused window ID, or `None` if no window has focus.
+    pub fn focused_window_id(&self) -> Option<u64> {
+        self.focused_window_id
+    }
+
+    /// Updates the focused window ID. Called when the compositor reports a focus change.
+    pub fn handle_focus_changed(&mut self, window_id: u64) {
+        self.focused_window_id = Some(window_id);
+    }
+
     pub fn desktop_ref(&self, ws: u32) -> Option<&VirtualDesktop> {
         self.desktops.get(&ws)
     }
