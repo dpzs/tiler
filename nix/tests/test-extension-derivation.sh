@@ -89,6 +89,26 @@ run_test "flake.nix has balanced braces" bash -c '
   fi
 '
 
+# -- Additional structural checks --
+
+run_test "gnome-extension.nix uses stdenvNoCC" \
+  assert_grep "stdenvNoCC" "$EXTENSION_NIX"
+
+run_test "gnome-extension.nix accepts extensionSrc parameter" \
+  assert_grep "extensionSrc" "$EXTENSION_NIX"
+
+run_test "flake.nix passes extensionSrc to gnome-extension derivation" \
+  assert_grep "extensionSrc" "$FLAKE"
+
+# -- Conditional nix eval --
+
+if command -v nix &>/dev/null; then
+  run_test "nix eval: extension derivation tests pass" \
+    nix eval --file "$REPO/nix/tests/test-extension-derivation.nix"
+else
+  printf "SKIP: nix eval (nix not available)\n"
+fi
+
 # -- Cargo test suite --
 
 run_test "Cargo test suite passes" \
