@@ -1,0 +1,11 @@
+[package]
+name = "tiler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+zbus = "5"
+toml = "0.8"
