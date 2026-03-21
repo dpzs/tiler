@@ -84,6 +84,11 @@ impl MockGnomeProxy {
     pub fn move_resize_calls(&self) -> &[(u64, i32, i32, i32, i32)] {
         &self.move_resize_log
     }
+
+    /// Synchronous snapshot of configured windows (for test setup helpers).
+    pub fn list_windows_snapshot(&self) -> Vec<WindowInfo> {
+        self.windows.clone()
+    }
 }
 
 impl GnomeProxy for MockGnomeProxy {
