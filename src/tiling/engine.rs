@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use crate::gnome::dbus_proxy::{GnomeProxy, MonitorInfo, ProxyResult};
-use crate::model::{Rect, VirtualDesktop};
+use crate::model::{LayoutPreset, Rect, VirtualDesktop};
+use crate::tiling::preset::{apply_fullscreen, apply_quadrants, apply_side_by_side, apply_top_bottom};
 use crate::tiling::stack::stack_layout;
 
 /// Tracks a window known to the engine.
@@ -9,6 +10,7 @@ struct TrackedWindow {
     #[allow(dead_code)]
     id: u64,
     workspace_id: u32,
+    monitor_id: u32,
     is_fullscreen: bool,
     is_toplevel: bool,
 }
@@ -43,6 +45,13 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     fn desktop(&mut self, ws: u32) -> &mut VirtualDesktop {
+        self.desktops
+            .entry(ws)
+            .or_insert_with(|| VirtualDesktop::new(ws))
+    }
+
+    /// Public mutable access to a virtual desktop, creating it if absent.
+    pub fn desktop_mut(&mut self, ws: u32) -> &mut VirtualDesktop {
         self.desktops
             .entry(ws)
             .or_insert_with(|| VirtualDesktop::new(ws))
@@ -101,6 +110,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             let tracked = TrackedWindow {
                 id: w.id,
                 workspace_id: w.workspace_id,
+                monitor_id: w.monitor_id,
                 is_fullscreen: is_fs,
                 is_toplevel: is_tl,
             };
@@ -130,6 +140,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
         let tracked = TrackedWindow {
             id: window_id,
             workspace_id: self.active_workspace,
+            monitor_id: self.stack_screen_index as u32,
             is_fullscreen: is_fs,
             is_toplevel: is_tl,
         };
@@ -195,6 +206,90 @@ impl<P: GnomeProxy> TilingEngine<P> {
         }
 
         self.tile_stack(ws).await?;
+        Ok(())
+    }
+
+    /// Handle a window geometry change event.
+    ///
+    /// If layout enforcement is active on the window's monitor and the window's
+    /// current geometry differs from its expected layout position, snap it back.
+    pub async fn handle_geometry_changed(
+        &mut self,
+        window_id: u64,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> ProxyResult<()> {
+        // If window is not tracked, nothing to do
+        let (workspace_id, monitor_id) = match self.windows.get(&window_id) {
+            Some(w) => (w.workspace_id, w.monitor_id),
+            None => return Ok(()),
+        };
+
+        // Check enforcement on this desktop/monitor
+        let desktop = match self.desktops.get(&workspace_id) {
+            Some(d) => d,
+            None => return Ok(()),
+        };
+
+        if !desktop.is_enforced(monitor_id) {
+            return Ok(());
+        }
+
+        let preset = match desktop.get_layout(monitor_id) {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+
+        // Find monitor rect
+        let monitor_rect = match self.monitors.iter().find(|m| m.id == monitor_id) {
+            Some(m) => Rect {
+                x: m.x,
+                y: m.y,
+                width: m.width,
+                height: m.height,
+            },
+            None => return Ok(()),
+        };
+
+        // Collect window IDs on this monitor, preserving desktop stack order
+        let window_ids: Vec<u64> = desktop
+            .stack_windows
+            .iter()
+            .filter(|&&wid| {
+                self.windows
+                    .get(&wid)
+                    .is_some_and(|w| w.monitor_id == monitor_id)
+            })
+            .copied()
+            .collect();
+
+        // Compute expected positions using the layout preset
+        let positions = match preset {
+            LayoutPreset::Fullscreen => apply_fullscreen(&window_ids, monitor_rect),
+            LayoutPreset::SideBySide => apply_side_by_side(&window_ids, monitor_rect),
+            LayoutPreset::TopBottom => apply_top_bottom(&window_ids, monitor_rect),
+            LayoutPreset::Quadrants => apply_quadrants(&window_ids, monitor_rect),
+        };
+
+        // Find this window's expected position
+        let expected = match positions.iter().find(|(id, _)| *id == window_id) {
+            Some((_, rect)) => *rect,
+            None => return Ok(()),
+        };
+
+        // If geometry already matches, no snap-back needed
+        if x == expected.x && y == expected.y && width == expected.width && height == expected.height
+        {
+            return Ok(());
+        }
+
+        // Snap the window back to its expected position
+        self.proxy
+            .move_resize_window(window_id, expected.x, expected.y, expected.width, expected.height)
+            .await?;
+
         Ok(())
     }
 
