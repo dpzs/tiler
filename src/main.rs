@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 use tiler::cli::{Cli, Commands};
 use tiler::daemon::run_daemon;
-use tiler::gnome::dbus_proxy::MockGnomeProxy;
+use tiler::gnome::zbus_proxy::ZbusGnomeProxy;
 use tiler::ipc::client::send_command;
 use tiler::ipc::protocol::Command;
 
@@ -21,8 +21,16 @@ async fn main() {
 
     let result = match cli.command {
         Commands::Daemon => {
-            let proxy = MockGnomeProxy::new();
-            run_daemon(proxy, &sock, 0, None).await.map(|_| None)
+            let proxy = match ZbusGnomeProxy::connect().await {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            proxy.spawn_signal_listener(tx);
+            run_daemon(proxy, &sock, 0, None, Some(rx)).await.map(|_| None)
         }
         Commands::Menu => send_command(&sock, Command::Menu).await.map(Some),
         Commands::Status => send_command(&sock, Command::Status).await.map(Some),
