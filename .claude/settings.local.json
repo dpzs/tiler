@@ -3,7 +3,10 @@
     "allow": [
       "WebSearch",
       "WebFetch(domain:gist.github.com)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }
