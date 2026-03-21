@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN"
+  "http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd">
+<node name="/org/gnome/Shell/Extensions/Tiler">
+  <interface name="org.gnome.Shell.Extensions.Tiler">
+
+    <!-- Methods -->
+
+    <method name="ListWindows">
+      <arg name="windows_json" type="s" direction="out"/>
+    </method>
+
+    <method name="MoveResizeWindow">
+      <arg name="window_id" type="t" direction="in"/>
+      <arg name="x" type="i" direction="in"/>
+      <arg name="y" type="i" direction="in"/>
+      <arg name="width" type="i" direction="in"/>
+      <arg name="height" type="i" direction="in"/>
+    </method>
+
+    <method name="GetMonitors">
+      <arg name="monitors_json" type="s" direction="out"/>
+    </method>
+
+    <method name="GetActiveWorkspace">
+      <arg name="workspace_id" type="u" direction="out"/>
+    </method>
+
+    <method name="GetWindowType">
+      <arg name="window_id" type="t" direction="in"/>
+      <arg name="window_type" type="s" direction="out"/>
+    </method>
+
+    <method name="IsFullscreen">
+      <arg name="window_id" type="t" direction="in"/>
+      <arg name="is_fullscreen" type="b" direction="out"/>
+    </method>
+
+    <!-- Signals -->
+
+    <signal name="WindowOpened">
+      <arg name="window_id" type="t"/>
+      <arg name="title" type="s"/>
+      <arg name="app_class" type="s"/>
+    </signal>
+
+    <signal name="WindowClosed">
+      <arg name="window_id" type="t"/>
+    </signal>
+
+    <signal name="WindowFocusChanged">
+      <arg name="window_id" type="t"/>
+    </signal>
+
+    <signal name="WorkspaceChanged">
+      <arg name="workspace_id" type="u"/>
+    </signal>
+
+    <signal name="WindowFullscreenChanged">
+      <arg name="window_id" type="t"/>
+      <arg name="is_fullscreen" type="b"/>
+    </signal>
+
+    <signal name="WindowGeometryChanged">
+      <arg name="window_id" type="t"/>
+      <arg name="x" type="i"/>
+      <arg name="y" type="i"/>
+      <arg name="width" type="i"/>
+      <arg name="height" type="i"/>
+    </signal>
+
+    <signal name="MenuKeyPressed">
+      <arg name="key" type="s"/>
+      <arg name="modifiers" type="s"/>
+    </signal>
+
+  </interface>
+</node>

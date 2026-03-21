@@ -1,0 +1,8 @@
+{
+  "uuid": "tiler@gnome-extensions",
+  "name": "Tiler",
+  "description": "Tiling window manager for GNOME — exposes D-Bus API for window management and menu overlay",
+  "version": 1,
+  "shell-version": ["45", "46", "47"],
+  "url": ""
+}
