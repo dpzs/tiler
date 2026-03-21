@@ -93,7 +93,7 @@ async fn dispatch_event<P: GnomeProxy>(engine: &mut TilingEngine<P>, event: Even
             let _ = engine.handle_window_closed(window_id).await;
         }
         Event::WindowFocusChanged { window_id } => {
-            let _ = engine.handle_focus_changed(window_id).await;
+            engine.handle_focus_changed(window_id);
         }
         Event::WorkspaceChanged { workspace_id } => {
             let _ = engine.handle_workspace_changed(workspace_id).await;

@@ -192,9 +192,8 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     /// Handle a window focus change.
-    pub async fn handle_focus_changed(&mut self, window_id: u64) -> ProxyResult<()> {
+    pub fn handle_focus_changed(&mut self, window_id: u64) {
         self.focused_window_id = Some(window_id);
-        Ok(())
     }
 
     /// Handle workspace change.
