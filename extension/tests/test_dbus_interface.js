@@ -42,7 +42,6 @@ export default function tests() {
       );
     }),
 
-    // Methods
     test('dbus-interface.xml defines ListWindows method', () => {
       const xml = getXml();
       assert.ok(xml.includes('name="ListWindows"'), 'Missing ListWindows method');
@@ -73,7 +72,6 @@ export default function tests() {
       assert.ok(xml.includes('name="IsFullscreen"'), 'Missing IsFullscreen method');
     }),
 
-    // Signals
     test('dbus-interface.xml defines WindowOpened signal', () => {
       const xml = getXml();
       assert.ok(xml.includes('name="WindowOpened"'), 'Missing WindowOpened signal');
@@ -109,10 +107,8 @@ export default function tests() {
       assert.ok(xml.includes('name="MenuKeyPressed"'), 'Missing MenuKeyPressed signal');
     }),
 
-    // Argument types
     test('MoveResizeWindow has window_id argument of type t (uint64)', () => {
       const xml = getXml();
-      // Extract the MoveResizeWindow method block
       const methodStart = xml.indexOf('name="MoveResizeWindow"');
       assert.ok(methodStart !== -1, 'MoveResizeWindow not found');
       const methodEnd = xml.indexOf('</method>', methodStart);
@@ -134,7 +130,6 @@ export default function tests() {
           `MoveResizeWindow missing arg: ${arg}`
         );
       }
-      // All position/size args should be type="i" (int32)
       const iArgs = methodBlock.match(/type="i"/g);
       assert.ok(iArgs && iArgs.length >= 4, 'MoveResizeWindow needs at least 4 int32 args');
     }),

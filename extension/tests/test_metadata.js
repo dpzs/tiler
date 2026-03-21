@@ -25,7 +25,7 @@ export default function tests() {
 
     test('metadata.json is valid JSON', () => {
       const raw = readFileSync(METADATA_PATH, 'utf-8');
-      JSON.parse(raw); // throws if invalid
+      JSON.parse(raw);
     }),
 
     test('metadata.json has uuid "tiler@gnome-extensions"', () => {
