@@ -1,0 +1,150 @@
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+import { TilerDBusService } from './dbus.js';
+import { MenuOverlay } from './menu.js';
+
+export default class TilerExtension extends Extension {
+    enable() {
+        this._dbusService = new TilerDBusService();
+        this._dbusService.register();
+
+        this._menu = new MenuOverlay();
+        this._menu.setKeyCallback((key, modifiers) => {
+            this._dbusService.emitMenuKeyPressed(key, modifiers);
+        });
+
+        this._signalIds = [];
+        this._windowSignals = new Map();
+
+        this._connectDisplaySignals();
+        this._connectWorkspaceSignals();
+    }
+
+    disable() {
+        this._disconnectAllSignals();
+
+        if (this._menu) {
+            this._menu.destroy();
+            this._menu = null;
+        }
+
+        if (this._dbusService) {
+            this._dbusService.destroy();
+            this._dbusService = null;
+        }
+    }
+
+    _connectDisplaySignals() {
+        const display = global.display;
+
+        // Window created
+        const windowCreatedId = display.connect('window-created', (d, win) => {
+            this._onWindowCreated(win);
+        });
+        this._signalIds.push({ obj: display, id: windowCreatedId });
+
+        // Focus window changed
+        const focusId = display.connect('notify::focus-window', () => {
+            const win = display.focus_window;
+            if (win) {
+                this._dbusService.emitWindowFocusChanged(
+                    win.get_stable_sequence(),
+                );
+            }
+        });
+        this._signalIds.push({ obj: display, id: focusId });
+    }
+
+    _connectWorkspaceSignals() {
+        const workspaceManager = global.workspace_manager;
+
+        const wsChangedId = workspaceManager.connect('active-workspace-changed', () => {
+            const idx = workspaceManager.get_active_workspace_index();
+            this._dbusService.emitWorkspaceChanged(idx);
+        });
+        this._signalIds.push({ obj: workspaceManager, id: wsChangedId });
+    }
+
+    _onWindowCreated(win) {
+        const windowId = win.get_stable_sequence();
+        const title = win.get_title() || '';
+        const tracker = imports.gi.Shell.WindowTracker.get_default();
+        const app = tracker.get_window_app(win);
+        const appClass = app ? app.get_id() : '';
+
+        this._dbusService.emitWindowOpened(windowId, title, appClass);
+
+        const perWindowSignals = [];
+
+        // Track window close (unmanaged)
+        const unmanagedId = win.connect('unmanaged', () => {
+            this._dbusService.emitWindowClosed(windowId);
+            this._disconnectWindowSignals(windowId);
+        });
+        perWindowSignals.push(unmanagedId);
+
+        // Track fullscreen changes
+        const fullscreenId = win.connect('notify::fullscreen', () => {
+            this._dbusService.emitWindowFullscreenChanged(
+                windowId,
+                win.is_fullscreen(),
+            );
+        });
+        perWindowSignals.push(fullscreenId);
+
+        // Track geometry changes (position and size)
+        const positionId = win.connect('position-changed', () => {
+            const rect = win.get_frame_rect();
+            this._dbusService.emitWindowGeometryChanged(
+                windowId, rect.x, rect.y, rect.width, rect.height,
+            );
+        });
+        perWindowSignals.push(positionId);
+
+        const sizeId = win.connect('size-changed', () => {
+            const rect = win.get_frame_rect();
+            this._dbusService.emitWindowGeometryChanged(
+                windowId, rect.x, rect.y, rect.width, rect.height,
+            );
+        });
+        perWindowSignals.push(sizeId);
+
+        this._windowSignals.set(windowId, { win, signals: perWindowSignals });
+    }
+
+    _disconnectWindowSignals(windowId) {
+        const entry = this._windowSignals.get(windowId);
+        if (!entry)
+            return;
+
+        for (const sigId of entry.signals) {
+            try {
+                entry.win.disconnect(sigId);
+            } catch (e) {
+                // Window may already be destroyed
+            }
+        }
+        this._windowSignals.delete(windowId);
+    }
+
+    _disconnectAllSignals() {
+        // Disconnect display/workspace signals
+        if (this._signalIds) {
+            for (const { obj, id } of this._signalIds) {
+                try {
+                    obj.disconnect(id);
+                } catch (e) {
+                    // Object may be destroyed
+                }
+            }
+            this._signalIds = [];
+        }
+
+        // Disconnect all per-window signals
+        if (this._windowSignals) {
+            for (const [windowId] of this._windowSignals) {
+                this._disconnectWindowSignals(windowId);
+            }
+            this._windowSignals.clear();
+        }
+    }
+}
