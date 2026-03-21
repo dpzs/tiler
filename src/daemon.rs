@@ -8,9 +8,14 @@ use crate::ipc::protocol::{Command, Response, read_message, send_message};
 use crate::menu::state::MenuInput;
 use crate::tiling::engine::TilingEngine;
 
-/// Run the tiler daemon: initialize the tiling engine, then serve IPC commands
-/// over a Unix socket until a Shutdown command is received or the optional
-/// shutdown channel fires.
+/// Run the tiler daemon.
+///
+/// Initializes the tiling engine, binds a Unix socket at `socket_path`, and
+/// serves IPC commands in a loop. Exits cleanly on a `Shutdown` IPC command or
+/// when the optional `shutdown` channel receives a value (used for OS signal
+/// handling).
+///
+/// Any existing file at `socket_path` is removed before binding.
 pub async fn run_daemon<P: GnomeProxy + 'static>(
     proxy: P,
     socket_path: &Path,

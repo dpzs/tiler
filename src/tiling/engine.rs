@@ -1,3 +1,5 @@
+//! Tiling engine: coordinates window tracking, layout enforcement, and menu state.
+
 use std::collections::HashMap;
 
 use crate::gnome::dbus_proxy::{GnomeProxy, MonitorInfo, ProxyResult};
@@ -16,6 +18,11 @@ struct TrackedWindow {
     is_toplevel: bool,
 }
 
+/// Core tiling engine.
+///
+/// Owns all window state, per-workspace virtual desktops, and the menu state
+/// machine. Drives layout enforcement and responds to compositor events
+/// forwarded by the daemon.
 pub struct TilingEngine<P: GnomeProxy> {
     proxy: P,
     stack_screen_index: usize,
@@ -27,6 +34,10 @@ pub struct TilingEngine<P: GnomeProxy> {
 }
 
 impl<P: GnomeProxy> TilingEngine<P> {
+    /// Create a new engine. Call [`startup`](Self::startup) before dispatching events.
+    ///
+    /// `stack_screen_index` is the index into the monitor list used as the
+    /// stack tiling screen.
     pub fn new(proxy: P, stack_screen_index: usize) -> Self {
         Self {
             proxy,
@@ -39,10 +50,12 @@ impl<P: GnomeProxy> TilingEngine<P> {
         }
     }
 
+    /// Returns a reference to the underlying compositor proxy.
     pub fn proxy(&self) -> &P {
         &self.proxy
     }
 
+    /// Returns a mutable reference to the underlying compositor proxy.
     pub fn proxy_mut(&mut self) -> &mut P {
         &mut self.proxy
     }
@@ -53,7 +66,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             .or_insert_with(|| VirtualDesktop::new(ws))
     }
 
-    /// Public mutable access to a virtual desktop, creating it if absent.
+    /// Returns a mutable reference to the virtual desktop for `ws`, creating it if absent.
     pub fn desktop_mut(&mut self, ws: u32) -> &mut VirtualDesktop {
         self.desktops
             .entry(ws)
@@ -389,10 +402,13 @@ impl<P: GnomeProxy> TilingEngine<P> {
         Ok(())
     }
 
+    /// Returns the currently active workspace ID.
     pub fn active_workspace(&self) -> u32 {
         self.active_workspace
     }
 
+    /// Returns a read-only reference to the virtual desktop for `ws`, or `None` if it
+    /// has not been created yet.
     pub fn desktop_ref(&self, ws: u32) -> Option<&VirtualDesktop> {
         self.desktops.get(&ws)
     }
