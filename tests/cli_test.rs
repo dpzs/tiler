@@ -34,6 +34,22 @@ fn should_parse_menu_subcommand() {
 }
 
 #[test]
+fn should_parse_status_subcommand() {
+    // Arrange
+    let args = ["tiler", "status"];
+
+    // Act
+    let cli = Cli::try_parse_from(args).expect("should parse status subcommand");
+
+    // Assert
+    assert!(
+        matches!(cli.command, Commands::Status),
+        "expected Commands::Status, got {:?}",
+        cli.command
+    );
+}
+
+#[test]
 fn should_fail_with_no_subcommand() {
     // Arrange
     let args = ["tiler"];

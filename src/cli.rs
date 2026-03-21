@@ -14,4 +14,6 @@ pub enum Commands {
     Daemon,
     /// Open the floating menu
     Menu,
+    /// Query daemon status
+    Status,
 }
