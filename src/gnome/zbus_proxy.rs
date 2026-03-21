@@ -107,57 +107,57 @@ impl ZbusGnomeProxy {
                     Some(signal) = window_opened.next() => {
                         if let Ok(args) = signal.args() {
                             let _ = tx.send(Event::WindowOpened {
-                                window_id: args.window_id,
-                                title: args.title.to_string(),
-                                app_class: args.app_class.to_string(),
+                                window_id: *args.window_id(),
+                                title: args.title().to_string(),
+                                app_class: args.app_class().to_string(),
                             });
                         }
                     }
                     Some(signal) = window_closed.next() => {
                         if let Ok(args) = signal.args() {
                             let _ = tx.send(Event::WindowClosed {
-                                window_id: args.window_id,
+                                window_id: *args.window_id(),
                             });
                         }
                     }
                     Some(signal) = focus_changed.next() => {
                         if let Ok(args) = signal.args() {
                             let _ = tx.send(Event::WindowFocusChanged {
-                                window_id: args.window_id,
+                                window_id: *args.window_id(),
                             });
                         }
                     }
                     Some(signal) = workspace_changed.next() => {
                         if let Ok(args) = signal.args() {
                             let _ = tx.send(Event::WorkspaceChanged {
-                                workspace_id: args.workspace_id,
+                                workspace_id: *args.workspace_id(),
                             });
                         }
                     }
                     Some(signal) = fullscreen_changed.next() => {
                         if let Ok(args) = signal.args() {
                             let _ = tx.send(Event::WindowFullscreenChanged {
-                                window_id: args.window_id,
-                                is_fullscreen: args.is_fullscreen,
+                                window_id: *args.window_id(),
+                                is_fullscreen: *args.is_fullscreen(),
                             });
                         }
                     }
                     Some(signal) = geometry_changed.next() => {
                         if let Ok(args) = signal.args() {
                             let _ = tx.send(Event::WindowGeometryChanged {
-                                window_id: args.window_id,
-                                x: args.x,
-                                y: args.y,
-                                width: args.width,
-                                height: args.height,
+                                window_id: *args.window_id(),
+                                x: *args.x(),
+                                y: *args.y(),
+                                width: *args.width(),
+                                height: *args.height(),
                             });
                         }
                     }
                     Some(signal) = menu_key.next() => {
                         if let Ok(args) = signal.args() {
                             let _ = tx.send(Event::MenuKeyPressed {
-                                key: args.key.to_string(),
-                                modifiers: args.modifiers.to_string(),
+                                key: args.key().to_string(),
+                                modifiers: args.modifiers().to_string(),
                             });
                         }
                     }
