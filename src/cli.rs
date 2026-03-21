@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 /// Tiling window manager for GNOME on Wayland
 #[derive(Parser, Debug)]
-#[command(name = "tiler")]
+#[command(name = "tiler", version)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
