@@ -92,6 +92,12 @@ impl VirtualDesktop {
         self.stack_windows.insert(0, window_id);
     }
 
+    /// Add a window to the back of the stack. If already present, move it to back.
+    pub fn append_window(&mut self, window_id: u64) {
+        self.stack_windows.retain(|&id| id != window_id);
+        self.stack_windows.push(window_id);
+    }
+
     pub fn remove_window(&mut self, window_id: u64) {
         self.stack_windows.retain(|&id| id != window_id);
     }
