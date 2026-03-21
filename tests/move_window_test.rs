@@ -276,3 +276,95 @@ async fn should_remove_window_from_source_desktop_stack_after_move() {
         "window 2 should still be in the stack"
     );
 }
+
+// ===========================================================================
+// INTEGRATION TESTS
+// ===========================================================================
+
+// 10. Move window from stack screen removes it from stack_windows
+#[tokio::test]
+async fn should_remove_moved_window_from_stack_and_not_retile_it() {
+    // Two windows on monitor 0 (stack screen)
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy_with_windows(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Move window 1 to monitor 1
+    engine.handle_focus_changed(1);
+    engine.move_window_to_monitor(1).await.unwrap();
+
+    // Window 1 should no longer be in stack_windows (moved off stack screen)
+    let desktop = engine.desktop_ref(0).unwrap();
+    assert!(
+        !desktop.stack_windows.contains(&1),
+        "window moved off stack screen should be removed from stack_windows"
+    );
+    // Window 2 should remain
+    assert!(
+        desktop.stack_windows.contains(&2),
+        "unmoved window should remain in stack_windows"
+    );
+}
+
+// 11. Move then close: cleanup works for moved windows
+#[tokio::test]
+async fn should_handle_close_of_moved_window() {
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy_with_windows(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Move window 1 to monitor 1
+    engine.handle_focus_changed(1);
+    engine.move_window_to_monitor(1).await.unwrap();
+
+    // Close the moved window — should not panic or error
+    let result = engine.handle_window_closed(1).await;
+    assert!(result.is_ok(), "closing a moved window should succeed");
+}
+
+// 12. Move one of multiple windows: source monitor retiles remaining windows
+#[tokio::test]
+async fn should_retile_source_after_moving_one_of_multiple_windows() {
+    // Three windows on monitor 0 (stack screen)
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 3, title: "C".into(), app_class: "c".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy_with_windows(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // After startup, 3 windows were tiled. Record the call count.
+    let calls_after_startup = engine.proxy().move_resize_calls().len();
+
+    // Move window 2 to monitor 1
+    engine.handle_focus_changed(2);
+    engine.move_window_to_monitor(1).await.unwrap();
+
+    // After the move, the source stack screen should have been retiled
+    // with the remaining 2 windows (1 and 3)
+    let calls = engine.proxy().move_resize_calls();
+    let post_move_calls: Vec<_> = calls.iter().skip(calls_after_startup).collect();
+
+    // Should have: 1 call to move window 2, plus retile calls for remaining windows
+    assert!(
+        post_move_calls.len() >= 3,
+        "expected at least 3 calls after move (1 move + 2 retile), got {}",
+        post_move_calls.len()
+    );
+
+    // Verify window 2 was moved to monitor 1's position
+    let move_call = post_move_calls.iter().find(|c| c.0 == 2 && c.1 == 1920);
+    assert!(
+        move_call.is_some(),
+        "window 2 should have been moved to monitor 1 (x=1920)"
+    );
+}
