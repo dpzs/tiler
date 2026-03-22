@@ -20,10 +20,9 @@
       craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
       muslTarget = "x86_64-unknown-linux-musl";
-      muslRustFlags = "-C target-feature=+crt-static";
 
       tiler = import ./nix/package.nix {
-        inherit craneLib pkgs muslTarget muslRustFlags;
+        inherit craneLib pkgs muslTarget;
       };
 
       tiler-gnome-extension = pkgs.callPackage ./nix/gnome-extension.nix {
@@ -48,7 +47,6 @@
         ];
 
         CARGO_BUILD_TARGET = muslTarget;
-        CARGO_BUILD_RUSTFLAGS = muslRustFlags;
       };
     };
 }

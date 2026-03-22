@@ -1,4 +1,4 @@
-{ craneLib, pkgs, muslTarget, muslRustFlags }:
+{ craneLib, pkgs, muslTarget }:
 
 let
   src = craneLib.cleanCargoSource (craneLib.path ../.);
@@ -9,9 +9,13 @@ craneLib.buildPackage {
   strictDeps = true;
 
   CARGO_BUILD_TARGET = muslTarget;
-  CARGO_BUILD_RUSTFLAGS = muslRustFlags;
 
-  nativeBuildInputs = with pkgs; [
-    musl
+  # Target-specific rustflags — only applies to the musl target, not build scripts
+  CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = "${pkgs.pkgsCross.musl64.stdenv.cc}/bin/x86_64-unknown-linux-musl-cc";
+
+  nativeBuildInputs = [
+    pkgs.pkgsCross.musl64.stdenv.cc
   ];
+
+  # musl targets default to static linking, no need for -C target-feature=+crt-static
 }
