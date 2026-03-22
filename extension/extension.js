@@ -8,6 +8,7 @@ export default class TilerExtension extends Extension {
         this._dbusService.register();
 
         this._menu = new MenuOverlay();
+        this._dbusService.setMenuOverlay(this._menu);
         this._menu.setKeyCallback((key, modifiers) => {
             this._dbusService.emitMenuKeyPressed(key, modifiers);
         });

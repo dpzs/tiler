@@ -33,6 +33,14 @@ const INTERFACE_XML = `
       <arg name="window_id" type="t" direction="in"/>
       <arg name="is_fullscreen" type="b" direction="out"/>
     </method>
+    <method name="ShowMenu">
+      <arg name="monitors_json" type="s" direction="in"/>
+    </method>
+    <method name="ShowMenuZoomed">
+      <arg name="monitor_id" type="u" direction="in"/>
+      <arg name="layouts_json" type="s" direction="in"/>
+    </method>
+    <method name="HideMenu"/>
     <signal name="WindowOpened">
       <arg name="window_id" type="t"/>
       <arg name="title" type="s"/>
@@ -69,6 +77,7 @@ export class TilerDBusService {
     constructor() {
         this._dbusImpl = null;
         this._nameOwnerId = 0;
+        this._menuOverlay = null;
     }
 
     register() {
@@ -90,6 +99,7 @@ export class TilerDBusService {
     }
 
     destroy() {
+        this._menuOverlay = null;
         if (this._dbusImpl) {
             this._dbusImpl.unexport();
             this._dbusImpl = null;
@@ -98,6 +108,16 @@ export class TilerDBusService {
             Gio.bus_unown_name(this._nameOwnerId);
             this._nameOwnerId = 0;
         }
+    }
+
+    /**
+     * Register the menu overlay instance that ShowMenu/ShowMenuZoomed/HideMenu
+     * will delegate to. Must be called before the daemon issues menu commands.
+     * @param {object} overlay - A MenuOverlay instance exposing showOverview,
+     *   showZoomed, and hide methods.
+     */
+    setMenuOverlay(overlay) {
+        this._menuOverlay = overlay;
     }
 
     // --- D-Bus Method Implementations ---
@@ -213,6 +233,34 @@ export class TilerDBusService {
             return false;
 
         return win.is_fullscreen();
+    }
+
+    /**
+     * D-Bus method: show the menu overlay in overview mode.
+     * @param {string} monitorsJson - JSON array of monitor descriptors.
+     */
+    ShowMenu(monitorsJson) {
+        if (this._menuOverlay)
+            this._menuOverlay.showOverview(monitorsJson);
+    }
+
+    /**
+     * D-Bus method: show the menu overlay zoomed into a specific monitor's
+     * layout picker.
+     * @param {number} monitorId - Zero-based monitor index.
+     * @param {string} layoutsJson - JSON array of available layout presets.
+     */
+    ShowMenuZoomed(monitorId, layoutsJson) {
+        if (this._menuOverlay)
+            this._menuOverlay.showZoomed(monitorId, layoutsJson);
+    }
+
+    /**
+     * D-Bus method: hide the menu overlay.
+     */
+    HideMenu() {
+        if (this._menuOverlay)
+            this._menuOverlay.hide();
     }
 
     // --- Signal Emission Helpers ---

@@ -133,3 +133,32 @@ fn monitor_info_clone_and_eq() {
     };
     assert_eq!(m, m.clone());
 }
+
+#[tokio::test]
+async fn mock_proxy_show_menu_records_json() {
+    let mut mock = MockGnomeProxy::new();
+    mock.show_menu(r#"[{"id":0}]"#).await.unwrap();
+
+    let calls = mock.show_menu_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0], r#"[{"id":0}]"#);
+}
+
+#[tokio::test]
+async fn mock_proxy_hide_menu_increments_count() {
+    let mut mock = MockGnomeProxy::new();
+    mock.hide_menu().await.unwrap();
+    mock.hide_menu().await.unwrap();
+
+    assert_eq!(mock.hide_menu_count(), 2);
+}
+
+#[tokio::test]
+async fn mock_proxy_show_menu_zoomed_records_call() {
+    let mut mock = MockGnomeProxy::new();
+    mock.show_menu_zoomed(1, "[]").await.unwrap();
+
+    let calls = mock.show_menu_zoomed_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0], (1, "[]".to_string()));
+}
