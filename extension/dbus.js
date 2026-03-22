@@ -160,6 +160,11 @@ export class TilerDBusService {
         if (!win)
             return;
 
+        // Unmaximize first — move_resize_frame is silently ignored on
+        // maximized windows in Mutter/GNOME.
+        if (win.get_maximized())
+            win.unmaximize(Meta.MaximizeFlags.BOTH);
+
         win.move_resize_frame(false, x, y, width, height);
     }
 

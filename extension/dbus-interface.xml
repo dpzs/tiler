@@ -36,6 +36,17 @@
       <arg name="is_fullscreen" type="b" direction="out"/>
     </method>
 
+    <method name="ShowMenu">
+      <arg name="monitors_json" type="s" direction="in"/>
+    </method>
+
+    <method name="ShowMenuZoomed">
+      <arg name="monitor_id" type="u" direction="in"/>
+      <arg name="layouts_json" type="s" direction="in"/>
+    </method>
+
+    <method name="HideMenu"/>
+
     <!-- Signals -->
 
     <signal name="WindowOpened">

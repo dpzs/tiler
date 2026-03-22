@@ -1,4 +1,5 @@
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
+import Shell from 'gi://Shell';
 import { TilerDBusService } from './dbus.js';
 import { MenuOverlay } from './menu.js';
 
@@ -68,7 +69,7 @@ export default class TilerExtension extends Extension {
     _onWindowCreated(win) {
         const windowId = win.get_stable_sequence();
         const title = win.get_title() || '';
-        const tracker = imports.gi.Shell.WindowTracker.get_default();
+        const tracker = Shell.WindowTracker.get_default();
         const app = tracker.get_window_app(win);
         const appClass = app ? app.get_id() : '';
 
