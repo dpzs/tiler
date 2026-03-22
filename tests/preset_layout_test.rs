@@ -252,3 +252,83 @@ fn test_preset_with_screen_offset() {
     assert_eq!(result[0].1, Rect { x: 1920, y: 0, width: 960, height: 1080 });
     assert_eq!(result[1].1, Rect { x: 2880, y: 0, width: 960, height: 1080 });
 }
+
+// ===========================================================================
+// Pixel-rounding: odd dimensions must not leave gaps
+// ===========================================================================
+
+#[test]
+fn test_side_by_side_odd_width_no_gap() {
+    // Arrange — odd width: 1441 / 2 = 720 remainder 1
+    let ids = vec![1, 2];
+    let m = Rect { x: 0, y: 0, width: 1441, height: 1080 };
+
+    // Act
+    let result = apply_side_by_side(&ids, m);
+
+    // Assert — last slot absorbs the extra pixel
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].1.width, 720, "left half: 1441 / 2 = 720");
+    assert_eq!(result[1].1.width, 721, "right half absorbs remainder: 1441 - 720 = 721");
+    assert_eq!(result[1].1.x, 720, "right slot starts at left_w");
+    assert_eq!(
+        result[0].1.width + result[1].1.width,
+        1441,
+        "total width must equal monitor width"
+    );
+}
+
+#[test]
+fn test_top_bottom_odd_height_no_gap() {
+    // Arrange — odd height: 1081 / 2 = 540 remainder 1
+    let ids = vec![1, 2];
+    let m = Rect { x: 0, y: 0, width: 1920, height: 1081 };
+
+    // Act
+    let result = apply_top_bottom(&ids, m);
+
+    // Assert — last slot absorbs the extra pixel
+    assert_eq!(result.len(), 2);
+    assert_eq!(result[0].1.height, 540, "top half: 1081 / 2 = 540");
+    assert_eq!(result[1].1.height, 541, "bottom half absorbs remainder: 1081 - 540 = 541");
+    assert_eq!(result[1].1.y, 540, "bottom slot starts at top_h");
+    assert_eq!(
+        result[0].1.height + result[1].1.height,
+        1081,
+        "total height must equal monitor height"
+    );
+}
+
+#[test]
+fn test_quadrants_odd_dimensions_no_gap() {
+    // Arrange — both dimensions odd: 1441x1081
+    let ids = vec![1, 2, 3, 4];
+    let m = Rect { x: 0, y: 0, width: 1441, height: 1081 };
+
+    // Act
+    let result = apply_quadrants(&ids, m);
+
+    // Assert — right column and bottom row absorb remainders
+    assert_eq!(result.len(), 4);
+
+    // Top-left
+    assert_eq!(result[0].1, Rect { x: 0, y: 0, width: 720, height: 540 });
+    // Top-right (extra pixel in width)
+    assert_eq!(result[1].1, Rect { x: 720, y: 0, width: 721, height: 540 });
+    // Bottom-left (extra pixel in height)
+    assert_eq!(result[2].1, Rect { x: 0, y: 540, width: 720, height: 541 });
+    // Bottom-right (extra pixel in both)
+    assert_eq!(result[3].1, Rect { x: 720, y: 540, width: 721, height: 541 });
+
+    // Coverage invariants
+    assert_eq!(
+        result[0].1.width + result[1].1.width,
+        1441,
+        "top row width must equal monitor width"
+    );
+    assert_eq!(
+        result[0].1.height + result[2].1.height,
+        1081,
+        "left column height must equal monitor height"
+    );
+}

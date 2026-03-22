@@ -26,11 +26,22 @@ pub fn stack_layout(window_ids: &[u64], screen: Rect) -> Vec<(u64, Rect)> {
         let col_count = (n - col_start).min(COLUMN_CAPACITY);
         let row_height = screen.height / col_count as i32;
 
+        let w = if col == num_columns - 1 {
+            screen.width - col_width * (num_columns - 1) as i32
+        } else {
+            col_width
+        };
+        let h = if row == col_count - 1 {
+            screen.height - row_height * (col_count - 1) as i32
+        } else {
+            row_height
+        };
+
         let rect = Rect {
             x: screen.x + col_width * col as i32,
             y: screen.y + row_height * row as i32,
-            width: col_width,
-            height: row_height,
+            width: w,
+            height: h,
         };
 
         result.push((id, rect));
