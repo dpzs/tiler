@@ -149,7 +149,7 @@ export class TilerDBusService {
             const geom = display.get_monitor_geometry(i);
             monitors.push({
                 id: i,
-                name: display.get_monitor_connector(i) || `Monitor-${i}`,
+                name: this._getMonitorConnector(display, i),
                 position: i,
                 width: geom.width,
                 height: geom.height,
@@ -157,6 +157,24 @@ export class TilerDBusService {
         }
 
         return JSON.stringify(monitors);
+    }
+
+    _getMonitorConnector(display, index) {
+        // GNOME < 48: display.get_monitor_connector() exists
+        if (typeof display.get_monitor_connector === 'function')
+            return display.get_monitor_connector(index) || `Monitor-${index}`;
+
+        // GNOME 48+: use MonitorManager from backend
+        try {
+            const monitorManager = global.backend.get_monitor_manager();
+            const monitors = monitorManager.get_monitors();
+            if (monitors[index])
+                return monitors[index].get_connector() || `Monitor-${index}`;
+        } catch {
+            // fall through
+        }
+
+        return `Monitor-${index}`;
     }
 
     GetActiveWorkspace() {
