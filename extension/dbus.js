@@ -112,6 +112,9 @@ export class TilerDBusService {
                 continue;
 
             const rect = win.get_frame_rect();
+            if (!rect)
+                continue;
+
             const tracker = Shell.WindowTracker.get_default();
             const app = tracker.get_window_app(win);
 

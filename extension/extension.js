@@ -94,6 +94,7 @@ export default class TilerExtension extends Extension {
         // Track geometry changes (position and size)
         const positionId = win.connect('position-changed', () => {
             const rect = win.get_frame_rect();
+            if (!rect) return;
             this._dbusService.emitWindowGeometryChanged(
                 windowId, rect.x, rect.y, rect.width, rect.height,
             );
@@ -102,6 +103,7 @@ export default class TilerExtension extends Extension {
 
         const sizeId = win.connect('size-changed', () => {
             const rect = win.get_frame_rect();
+            if (!rect) return;
             this._dbusService.emitWindowGeometryChanged(
                 windowId, rect.x, rect.y, rect.width, rect.height,
             );
