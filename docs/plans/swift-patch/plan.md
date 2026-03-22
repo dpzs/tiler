@@ -2,86 +2,123 @@
 
 SKIP_DEVFLOW_PLAN
 
-## Overview
-
-Address three unresolved issues from the tile-wave session on branch devflow/tile-wave.
+## Task
+Fix 14 of 20 bugs identified in the tiler audit (docs/plans/swift-menu/bug-checklist.md).
+Defer 6 bugs needing design decisions (B1, B5, B7, G3, G5, G7).
 
 ## Dependency Graph
 
 ```
-Lane 1: MoveWindow        Lane 2: Real zbus D-Bus     Lane 3: Nix Test
-Implementation             Proxy + Daemon Event Loop   Improvements
-(engine.rs, tests)         (zbus_proxy.rs, daemon.rs,  (nix/tests/*.sh)
-                            main.rs)
-     │                          │                          │
-     │ (all parallel)           │                          │
-     v                          v                          v
-              Integration merge into devflow/swift-patch
+Lane 1: Core Engine Fixes (U1+U2+U4, auto-resolves B6+B8)
+   |
+   v
+Lane 2: Config Loading (U3)
+
+Lane 3: Extension Fixes (U5+B3+B4)  -- independent, parallel with Lane 1
+Lane 4: Housekeeping (G1+G2+B2/G4+G6) -- independent, parallel with Lane 1
 ```
 
-## Lanes
+Batches:
+- Batch 1: Lanes 1, 3, 4 (parallel)
+- Batch 2: Lane 2 (after Lane 1)
 
-### Lane 1: MoveWindow Implementation
-**Goal:** Implement actual cross-monitor window movement when Shift+N is pressed in the menu.
-**Files:**
-- src/tiling/engine.rs (modify)
-- tests/move_window_test.rs (create)
-- tests/menu_engine_test.rs (modify)
-**Acceptance:**
-- `focused_window_id: Option<u64>` field tracks which window has focus
-- `handle_focus_changed(window_id)` updates focused window
-- `move_window_to_monitor(target)` moves focused window to fill target monitor
-- Existing toplevel windows on target monitor displaced to stack screen
-- Stack screen retiles after displacement
-- If no focused window, MoveWindow is a safe no-op
-- Menu closes after MoveWindow (already handled by state machine)
-**Dependencies:** None
+## Lane 1: Core Monitor Assignment + Tiling Guard
 
-### Lane 2: Real zbus D-Bus Proxy + Daemon Event Loop
-**Goal:** Replace MockGnomeProxy in daemon mode with real zbus proxy. Add D-Bus signal listener and event dispatch.
-**Files:**
-- src/gnome/dbus_proxy.rs (modify — add serde derives)
-- src/gnome/zbus_proxy.rs (create)
-- src/gnome/mod.rs (modify)
-- src/main.rs (modify)
-- src/daemon.rs (modify)
-- tests/zbus_proxy_test.rs (create)
-**Acceptance:**
-- ZbusGnomeProxy implements GnomeProxy trait via zbus 5
-- JSON deserialization for ListWindows/GetMonitors
-- Signal listener converts D-Bus signals to Event enum via tokio::mpsc
-- Daemon event loop uses tokio::select! over IPC + D-Bus signals
-- All events dispatched to engine handlers (including focus changes)
-- main.rs uses ZbusGnomeProxy in daemon mode
-- Compile-time and deserialization tests pass
-**Dependencies:** None
+**Bugs:** U1, U2, U4 (B6, B8 resolved automatically)
 
-### Lane 3: Nix Test Improvements
-**Goal:** Improve Nix test coverage with better structural tests and conditional nix eval.
-**Files:**
-- nix/tests/test-extension-derivation.sh (modify)
-- nix/tests/test-module.sh (modify)
-- nix/tests/test-package-derivation.sh (create)
-- nix/tests/test-flake-structure.sh (create)
-- nix/tests/run-all.sh (create)
-- nix/tests/test-module.nix (create)
-**Acceptance:**
-- All shell tests pass without nix binary
-- Conditional nix eval blocks run when nix is available
-- package.nix has structural validation
-- Flake structure has structural validation
-- run-all.sh aggregates all test scripts
-- No regressions in existing tests
-**Dependencies:** None
+**Goal:** Windows are only added to the stack when they are on the stack screen.
+New windows get their actual monitor_id. Geometry events during active tiling
+are suppressed.
 
-## Parallelism Summary
-- 3 lanes, 1 parallel batch (all independent)
-- No file conflicts between lanes
+**Key design decision (U2):** Add `monitor_id: u32` to `Event::WindowOpened`
+and `handle_window_opened` signature. The extension already knows the monitor
+when a window opens. No new D-Bus method needed.
 
-## File Change Summary
+**Changes:**
+- `src/gnome/event.rs`: Add `monitor_id: u32` to `Event::WindowOpened`
+- `src/gnome/zbus_proxy.rs`: Pass monitor_id from signal (requires D-Bus signal change)
+- `extension/extension.js`: Include monitor in WindowOpened signal
+- `extension/dbus.js`: Update signal signature, add GetWindowMonitor method
+- `extension/dbus-interface.xml`: Update signal + add method
+- `src/gnome/dbus_proxy.rs`: Update GnomeProxy trait + MockGnomeProxy
+- `src/tiling/engine.rs`:
+  - `startup()`: Only append to stack if window.monitor_id == stack_screen_index
+  - `handle_window_opened()`: Accept + use monitor_id parameter
+  - Add `is_tiling: bool` field, set during tile_stack/apply_layout
+  - `handle_geometry_changed()`: Skip if is_tiling
+- `src/daemon.rs`: Pass monitor_id through dispatch_event
+- Update ~10 test files for new signatures
 
-| Lane | Creates | Modifies |
-|------|---------|----------|
-| 1 | tests/move_window_test.rs | src/tiling/engine.rs, tests/menu_engine_test.rs |
-| 2 | src/gnome/zbus_proxy.rs, tests/zbus_proxy_test.rs | src/gnome/dbus_proxy.rs, src/gnome/mod.rs, src/main.rs, src/daemon.rs |
-| 3 | nix/tests/test-package-derivation.sh, nix/tests/test-flake-structure.sh, nix/tests/run-all.sh, nix/tests/test-module.nix | nix/tests/test-extension-derivation.sh, nix/tests/test-module.sh |
+**Acceptance criteria:**
+- Opening a window on monitor 1 does NOT move windows from other monitors
+- Windows on non-stack monitors are tracked but not in stack_windows
+- Geometry events during tiling produce zero extra move_resize calls
+- All existing tests pass (with updated signatures)
+
+## Lane 2: Config Loading
+
+**Bugs:** U3
+
+**Goal:** The daemon reads /etc/tiler/config.toml and uses stack_screen_position
+to select the correct monitor as the stack screen.
+
+**Changes:**
+- `src/config/schema.rs`: Add `resolve_stack_screen_index(monitors)` method
+- `src/cli.rs`: Add optional `--config` to Daemon subcommand
+- `src/main.rs`: Load config, resolve index, pass to run_daemon
+- `nix/module.nix`: Add --config flag to ExecStart
+
+**Acceptance criteria:**
+- `stack_screen_position = "right"` uses rightmost monitor
+- Missing config file uses defaults (leftmost = index 0)
+- Existing config_test.rs tests pass
+
+## Lane 3: Extension Fixes
+
+**Bugs:** U5, B3, B4
+
+**Goal:** New windows are ready before tiling. Menu Escape fires once. Overlay
+covers all monitors.
+
+**Changes:**
+- `extension/extension.js`: Defer WindowOpened signal until window's first-frame
+- `extension/menu.js`:
+  - Remove local `this.hide()` on Escape (let daemon handle it)
+  - Size overlay to bounding box of all monitors
+
+**Acceptance criteria:**
+- Rapidly opening windows results in correct stack positions (no overlapping)
+- Pressing Escape hides menu exactly once (no GNOME Shell errors)
+- Menu dim overlay covers all 3 monitors
+
+## Lane 4: Housekeeping
+
+**Bugs:** G1, G2, B2/G4, G6
+
+**Goal:** Tests pass in CI with live daemon. No pixel gaps. No dead code.
+
+**Changes:**
+- `tests/cli_dispatch_test.rs`: Override XDG_RUNTIME_DIR to temp dir
+- `src/tiling/preset.rs`: Last slot absorbs remainder pixels
+- `src/tiling/stack.rs`: Last row/column absorbs remainder
+- Delete `src/ipc/server.rs`, remove from `src/ipc/mod.rs`
+- Delete `src/tiling/filter.rs`, remove from `src/tiling/mod.rs`
+- Clean up `src/model.rs` WindowType if unused
+- Update/delete affected tests (ipc_server_test, window_filter_test)
+
+**Acceptance criteria:**
+- cli_dispatch_test passes even with live daemon
+- Odd-dimension monitors produce gap-free layouts
+- `cargo build` succeeds with no dead code
+- All remaining tests pass
+
+## Deferred Bugs
+
+| Bug | Reason |
+|-----|--------|
+| B1 (status payload) | Needs design: what data to return |
+| B5 (excess windows) | Needs design: minimize vs stack vs hide |
+| B7 (workspace tracking) | Moderate scope, new signal chain |
+| G3 (connector names) | Needs GNOME version testing |
+| G5 (extension tests) | Infrastructure work, not a bug |
+| G7 (push vs append) | May be intentional, needs UX discussion |
