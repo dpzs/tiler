@@ -1,4 +1,5 @@
 use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo, WindowInfo};
+use tiler::model::LayoutPreset;
 use tiler::tiling::engine::TilingEngine;
 
 fn two_monitors() -> Vec<MonitorInfo> {
@@ -91,7 +92,7 @@ async fn new_window_added_to_stack_and_retiled() {
     engine.startup().await.unwrap();
 
     // Open a new normal window
-    engine.handle_window_opened(1, "Term".into(), "terminal".into()).await.unwrap();
+    engine.handle_window_opened(1, "Term".into(), "terminal".into(), 0).await.unwrap();
 
     let calls = engine.proxy().move_resize_calls();
     // Single window = single move_resize
@@ -115,7 +116,7 @@ async fn new_window_retiles_all_stack_windows() {
     assert_eq!(startup_calls, 1);
 
     // Open window 2
-    engine.handle_window_opened(2, "B".into(), "b".into()).await.unwrap();
+    engine.handle_window_opened(2, "B".into(), "b".into(), 0).await.unwrap();
 
     // Should now have 1 (startup) + 2 (retile both) = 3 calls
     let total_calls = engine.proxy().move_resize_calls().len();
@@ -132,7 +133,7 @@ async fn new_fullscreen_window_ignored() {
 
     // Mark window as fullscreen before opening
     engine.proxy_mut().set_fullscreen(1, true);
-    engine.handle_window_opened(1, "FS".into(), "fs".into()).await.unwrap();
+    engine.handle_window_opened(1, "FS".into(), "fs".into(), 0).await.unwrap();
 
     let calls = engine.proxy().move_resize_calls();
     assert_eq!(calls.len(), 0);
@@ -269,3 +270,126 @@ async fn fullscreen_off_adds_back_to_stack_and_retiles() {
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].0, 1);
 }
+
+// --- is_tiling guard ---
+
+#[tokio::test]
+async fn is_tiling_is_false_after_startup() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // After startup completes, is_tiling should be false
+    assert!(!engine.is_tiling(), "is_tiling should be false after startup completes");
+}
+
+#[tokio::test]
+async fn is_tiling_is_false_after_tile_stack_completes() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap(); // startup calls tile_stack internally
+
+    // After tile_stack has completed (via startup), is_tiling should be false
+    assert!(!engine.is_tiling(), "is_tiling should be false after tile_stack completes");
+}
+
+#[tokio::test]
+async fn geometry_changed_during_tiling_is_suppressed() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Set up enforcement + layout on monitor 0 so snap-back would normally fire
+    engine.desktop_mut(0).set_enforcement(0, true);
+    engine.desktop_mut(0).set_layout(0, LayoutPreset::SideBySide);
+
+    let calls_before = engine.proxy().move_resize_calls().len();
+
+    // Simulate being mid-tiling: set the guard
+    engine.set_tiling(true);
+
+    // Geometry change while tiling — should be suppressed (no snap-back)
+    engine
+        .handle_geometry_changed(1, 100, 100, 800, 600)
+        .await
+        .unwrap();
+
+    let calls_during = engine.proxy().move_resize_calls().len();
+    assert_eq!(
+        calls_during - calls_before,
+        0,
+        "no snap-back should occur while is_tiling is true"
+    );
+
+    // Clear the guard
+    engine.set_tiling(false);
+
+    // Now the same geometry change should trigger a snap-back
+    engine
+        .handle_geometry_changed(1, 100, 100, 800, 600)
+        .await
+        .unwrap();
+
+    let calls_after = engine.proxy().move_resize_calls().len();
+    assert_eq!(
+        calls_after - calls_during,
+        1,
+        "snap-back should occur when is_tiling is false and enforcement is active"
+    );
+}
+
+// --- Monitor guard in startup ---
+
+#[tokio::test]
+async fn startup_only_stacks_windows_on_stack_screen() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 3, title: "C".into(), app_class: "c".into(), monitor_id: 1, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    // stack_screen_index=0 means only monitor 0 windows should be tiled
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Only windows 1 and 2 (on monitor 0) should have been moved
+    let calls = engine.proxy().move_resize_calls();
+    assert_eq!(calls.len(), 2, "only stack-screen windows should be tiled at startup");
+}
+
+#[tokio::test]
+async fn startup_should_not_add_non_stack_monitor_windows_to_desktop() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Only window 1 should be in the desktop stack
+    let desktop = engine.desktop_mut(0);
+    assert_eq!(desktop.stack_windows, vec![1], "non-stack-monitor windows should not be in desktop stack");
+}
+

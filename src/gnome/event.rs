@@ -4,6 +4,7 @@ pub enum Event {
         window_id: u64,
         title: String,
         app_class: String,
+        monitor_id: u32,
     },
     WindowClosed {
         window_id: u64,

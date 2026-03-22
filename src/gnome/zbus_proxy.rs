@@ -34,6 +34,7 @@ trait Tiler {
         window_id: u64,
         title: String,
         app_class: String,
+        monitor_id: u32,
     ) -> zbus::fdo::Result<()>;
 
     #[zbus(signal)]
@@ -113,6 +114,7 @@ impl ZbusGnomeProxy {
                                 window_id: *args.window_id(),
                                 title: args.title().to_string(),
                                 app_class: args.app_class().to_string(),
+                                monitor_id: *args.monitor_id(),
                             });
                         }
                     }

@@ -44,7 +44,7 @@ async fn should_not_snap_back_when_enforcement_disabled() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
 
     let calls_before = engine.proxy().move_resize_calls().len();
@@ -73,7 +73,7 @@ async fn should_not_snap_back_when_enforcement_enabled_but_no_layout() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
 
     // Enable enforcement on monitor 1 but set no layout preset
@@ -107,7 +107,7 @@ async fn should_snap_back_when_enforcement_enabled_and_layout_set() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
 
     // Enable enforcement and set SideBySide layout on monitor 1
@@ -150,7 +150,7 @@ async fn should_not_crash_for_unknown_window() {
     let monitors = two_monitors();
     let proxy = make_proxy(monitors, vec![]);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
 
     let calls_before = engine.proxy().move_resize_calls().len();
@@ -181,7 +181,7 @@ async fn should_not_snap_when_geometry_already_correct() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
 
     // Enable enforcement and set SideBySide layout on monitor 1

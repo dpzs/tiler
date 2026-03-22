@@ -157,11 +157,13 @@ fn should_construct_window_opened_event() {
         window_id: 42,
         title: "Terminal".into(),
         app_class: "gnome-terminal".into(),
+        monitor_id: 0,
     };
     assert_eq!(event, Event::WindowOpened {
         window_id: 42,
         title: "Terminal".into(),
         app_class: "gnome-terminal".into(),
+        monitor_id: 0,
     });
 }
 

@@ -51,6 +51,7 @@ async fn should_handle_full_event_pipeline() {
         window_id: 1,
         title: "Terminal".into(),
         app_class: "gnome-terminal".into(),
+        monitor_id: 0,
     })
     .unwrap();
 
@@ -58,6 +59,7 @@ async fn should_handle_full_event_pipeline() {
         window_id: 2,
         title: "Firefox".into(),
         app_class: "firefox".into(),
+        monitor_id: 0,
     })
     .unwrap();
 
@@ -69,6 +71,7 @@ async fn should_handle_full_event_pipeline() {
         window_id: 3,
         title: "Code".into(),
         app_class: "code".into(),
+        monitor_id: 0,
     })
     .unwrap();
 
@@ -106,6 +109,7 @@ async fn should_handle_window_open_close_lifecycle() {
         window_id: 42,
         title: "Editor".into(),
         app_class: "vim".into(),
+        monitor_id: 0,
     })
     .unwrap();
 
@@ -164,6 +168,7 @@ async fn should_handle_mixed_ipc_and_events() {
         window_id: 10,
         title: "App1".into(),
         app_class: "app1".into(),
+        monitor_id: 0,
     })
     .unwrap();
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -223,6 +228,7 @@ fn should_construct_events_from_deserialized_window_info() {
             window_id: w.id,
             title: w.title.clone(),
             app_class: w.app_class.clone(),
+            monitor_id: w.monitor_id,
         })
         .collect();
 
@@ -235,6 +241,7 @@ fn should_construct_events_from_deserialized_window_info() {
             window_id: 1,
             title: "Terminal".into(),
             app_class: "gnome-terminal".into(),
+        monitor_id: 0,
         }
     );
 
@@ -244,6 +251,7 @@ fn should_construct_events_from_deserialized_window_info() {
             window_id: 2,
             title: "Firefox".into(),
             app_class: "firefox".into(),
+        monitor_id: 1,
         }
     );
 
@@ -253,6 +261,7 @@ fn should_construct_events_from_deserialized_window_info() {
             window_id: 3,
             title: "Code".into(),
             app_class: "code".into(),
+        monitor_id: 0,
         }
     );
 

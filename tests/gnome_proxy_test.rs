@@ -86,7 +86,7 @@ async fn mock_proxy_is_fullscreen() {
 fn event_enum_has_all_signal_variants() {
     // Test that all event variants can be constructed
     let events = vec![
-        Event::WindowOpened { window_id: 1, title: "t".into(), app_class: "c".into() },
+        Event::WindowOpened { window_id: 1, title: "t".into(), app_class: "c".into(), monitor_id: 0 },
         Event::WindowClosed { window_id: 1 },
         Event::WindowFocusChanged { window_id: 1 },
         Event::WorkspaceChanged { workspace_id: 0 },
@@ -103,6 +103,7 @@ fn event_debug_impl() {
         window_id: 42,
         title: "Test".into(),
         app_class: "test".into(),
+        monitor_id: 0,
     };
     let debug = format!("{:?}", event);
     assert!(debug.contains("WindowOpened"));

@@ -62,8 +62,10 @@ async fn should_snap_back_after_menu_applies_layout_and_enables_enforcement() {
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 0 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
+    engine.desktop_mut(0).append_window(1);
+    engine.desktop_mut(0).append_window(2);
 
     // Act — use menu to apply SideBySide on monitor 1
     engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
@@ -138,8 +140,9 @@ async fn should_enforce_layout_through_window_open_close_and_geometry_change() {
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 1, workspace_id: 0 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
+    engine.desktop_mut(0).append_window(1);
 
     // Set layout and enforcement directly
     engine.desktop_mut(0).set_layout(1, LayoutPreset::SideBySide);
@@ -150,7 +153,7 @@ async fn should_enforce_layout_through_window_open_close_and_geometry_change() {
     // Open a second window on monitor 1
     engine.proxy_mut().set_window_type(2, "toplevel".into());
     engine
-        .handle_window_opened(2, "B".into(), "b".into())
+        .handle_window_opened(2, "B".into(), "b".into(), 1)
         .await
         .unwrap();
 
@@ -267,7 +270,7 @@ async fn should_preserve_layout_across_workspace_switches() {
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 1 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
 
     // Set SideBySide on workspace 0, monitor 1
@@ -327,10 +330,13 @@ async fn should_preserve_enforcement_across_workspace_switches() {
         WindowInfo { id: 3, title: "C".into(), app_class: "c".into(), monitor_id: 1, workspace_id: 1 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, 1);
     engine.startup().await.unwrap();
 
     // Set SideBySide + enforcement on workspace 0, monitor 1
+    engine.desktop_mut(0).append_window(1);
+    engine.desktop_mut(0).append_window(2);
+    engine.desktop_mut(1).append_window(3);
     engine.desktop_mut(0).set_layout(1, LayoutPreset::SideBySide);
     engine.desktop_mut(0).set_enforcement(1, true);
 
