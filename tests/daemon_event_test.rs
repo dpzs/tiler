@@ -124,6 +124,239 @@ async fn should_dispatch_workspace_changed_event() {
     let _ = std::fs::remove_file(&sock);
 }
 
+// ===========================================================================
+// MenuKeyPressed dispatch
+// ===========================================================================
+
+/// Send a MenuKeyPressed event with Escape and verify daemon stays alive.
+#[tokio::test]
+async fn should_dispatch_menu_key_pressed_escape() {
+    // Arrange
+    let sock = test_socket_path("event-menu-esc");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — send MenuKeyPressed Escape
+    tx.send(Event::MenuKeyPressed {
+        key: "Escape".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon still alive
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
+/// Send a MenuKeyPressed event with digit "1" and verify daemon stays alive.
+#[tokio::test]
+async fn should_dispatch_menu_key_pressed_digit() {
+    // Arrange
+    let sock = test_socket_path("event-menu-digit");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — send MenuKeyPressed digit
+    tx.send(Event::MenuKeyPressed {
+        key: "1".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon still alive
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
+/// Send a MenuKeyPressed event with unknown key "F5" and verify daemon stays alive.
+#[tokio::test]
+async fn should_ignore_unknown_menu_key() {
+    // Arrange
+    let sock = test_socket_path("event-menu-unknown");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — send MenuKeyPressed with unknown key
+    tx.send(Event::MenuKeyPressed {
+        key: "F5".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon still alive
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
+// ===========================================================================
+// End-to-end MenuKeyPressed dispatch (menu opened via IPC first)
+// ===========================================================================
+
+/// Open menu via Command::Menu (Closed->Overview), then send Escape via
+/// MenuKeyPressed event. Exercises the full dispatch path: parse_menu_key
+/// sees Overview state, returns Some(Escape), engine transitions Overview->Closed.
+#[tokio::test]
+async fn should_dispatch_escape_from_overview_state() {
+    // Arrange
+    let sock = test_socket_path("event-e2e-esc");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — open menu via IPC, then close via MenuKeyPressed Escape
+    let resp = send_command(&sock, Command::Menu).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    tx.send(Event::MenuKeyPressed {
+        key: "Escape".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon still alive after full open->close cycle
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
+/// Open menu via Command::Menu (Closed->Overview), then send digit "1" via
+/// MenuKeyPressed event. In Overview state, "1" maps to PressN(0) which
+/// transitions Overview->ZoomedIn(0) and calls proxy.show_menu_zoomed().
+#[tokio::test]
+async fn should_dispatch_digit_press_from_overview_state() {
+    // Arrange
+    let sock = test_socket_path("event-e2e-digit");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — open menu, then press "1" to zoom into monitor 0
+    let resp = send_command(&sock, Command::Menu).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    tx.send(Event::MenuKeyPressed {
+        key: "1".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon still alive after Overview->ZoomedIn transition
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
+/// Full 3-step flow: open menu (Closed->Overview), press "1" (Overview->ZoomedIn(0)),
+/// press "2" (ZoomedIn(0)->Closed via ApplyLayout). Exercises the entire dispatch
+/// chain through all three menu states.
+#[tokio::test]
+async fn should_dispatch_full_menu_flow_open_zoom_apply() {
+    // Arrange
+    let sock = test_socket_path("event-e2e-full");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — step 1: open menu via IPC (Closed -> Overview)
+    let resp = send_command(&sock, Command::Menu).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — step 2: press "1" via event (Overview -> ZoomedIn(0))
+    tx.send(Event::MenuKeyPressed {
+        key: "1".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — step 3: press "2" via event (ZoomedIn(0) -> Closed, ApplyLayout(0, 2))
+    tx.send(Event::MenuKeyPressed {
+        key: "2".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon survived the full Closed->Overview->ZoomedIn->Closed cycle
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
 /// Backward compatibility: start daemon with None for the event receiver, verify IPC still works.
 #[tokio::test]
 async fn should_work_without_event_receiver() {
