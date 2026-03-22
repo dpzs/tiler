@@ -16,6 +16,7 @@ export default class TilerExtension extends Extension {
 
         this._signalIds = [];
         this._windowSignals = new Map();
+        this._pendingFirstFrame = new Map();
 
         this._connectDisplaySignals();
         this._connectWorkspaceSignals();
@@ -67,52 +68,68 @@ export default class TilerExtension extends Extension {
     }
 
     _onWindowCreated(win) {
-        const windowId = win.get_stable_sequence();
-        const title = win.get_title() || '';
-        const tracker = Shell.WindowTracker.get_default();
-        const app = tracker.get_window_app(win);
-        const appClass = app ? app.get_id() : '';
+        try {
+            const windowId = win.get_stable_sequence();
+            const title = win.get_title() || '';
+            const tracker = Shell.WindowTracker.get_default();
+            const app = tracker.get_window_app(win);
+            const appClass = app ? app.get_id() : '';
 
-        this._dbusService.emitWindowOpened(windowId, title, appClass, win.get_monitor());
+            const actor = win.get_compositor_private();
+            if (!actor) return;
 
-        const perWindowSignals = [];
+            const emitAndConnect = () => {
+                this._pendingFirstFrame.delete(windowId);
+                this._dbusService.emitWindowOpened(windowId, title, appClass, win.get_monitor());
 
-        // Track window close (unmanaged)
-        const unmanagedId = win.connect('unmanaged', () => {
-            this._dbusService.emitWindowClosed(windowId);
-            this._disconnectWindowSignals(windowId);
-        });
-        perWindowSignals.push(unmanagedId);
+                const perWindowSignals = [];
 
-        // Track fullscreen changes
-        const fullscreenId = win.connect('notify::fullscreen', () => {
-            this._dbusService.emitWindowFullscreenChanged(
-                windowId,
-                win.is_fullscreen(),
-            );
-        });
-        perWindowSignals.push(fullscreenId);
+                const unmanagedId = win.connect('unmanaged', () => {
+                    this._dbusService.emitWindowClosed(windowId);
+                    this._disconnectWindowSignals(windowId);
+                });
+                perWindowSignals.push(unmanagedId);
 
-        // Track geometry changes (position and size)
-        const positionId = win.connect('position-changed', () => {
-            const rect = win.get_frame_rect();
-            if (!rect) return;
-            this._dbusService.emitWindowGeometryChanged(
-                windowId, rect.x, rect.y, rect.width, rect.height,
-            );
-        });
-        perWindowSignals.push(positionId);
+                const fullscreenId = win.connect('notify::fullscreen', () => {
+                    this._dbusService.emitWindowFullscreenChanged(
+                        windowId, win.is_fullscreen(),
+                    );
+                });
+                perWindowSignals.push(fullscreenId);
 
-        const sizeId = win.connect('size-changed', () => {
-            const rect = win.get_frame_rect();
-            if (!rect) return;
-            this._dbusService.emitWindowGeometryChanged(
-                windowId, rect.x, rect.y, rect.width, rect.height,
-            );
-        });
-        perWindowSignals.push(sizeId);
+                const positionId = win.connect('position-changed', () => {
+                    const rect = win.get_frame_rect();
+                    if (!rect) return;
+                    this._dbusService.emitWindowGeometryChanged(
+                        windowId, rect.x, rect.y, rect.width, rect.height,
+                    );
+                });
+                perWindowSignals.push(positionId);
 
-        this._windowSignals.set(windowId, { win, signals: perWindowSignals });
+                const sizeId = win.connect('size-changed', () => {
+                    const rect = win.get_frame_rect();
+                    if (!rect) return;
+                    this._dbusService.emitWindowGeometryChanged(
+                        windowId, rect.x, rect.y, rect.width, rect.height,
+                    );
+                });
+                perWindowSignals.push(sizeId);
+
+                this._windowSignals.set(windowId, { win, signals: perWindowSignals });
+            };
+
+            if (actor.is_mapped()) {
+                emitAndConnect();
+            } else {
+                const firstFrameId = actor.connect('first-frame', () => {
+                    actor.disconnect(firstFrameId);
+                    emitAndConnect();
+                });
+                this._pendingFirstFrame.set(windowId, { actor, id: firstFrameId });
+            }
+        } catch (e) {
+            log(`[tiler] _onWindowCreated failed: ${e.message}`);
+        }
     }
 
     _disconnectWindowSignals(windowId) {
@@ -141,6 +158,18 @@ export default class TilerExtension extends Extension {
                 }
             }
             this._signalIds = [];
+        }
+
+        // Disconnect pending first-frame signals
+        if (this._pendingFirstFrame) {
+            for (const [, { actor, id }] of this._pendingFirstFrame) {
+                try {
+                    actor.disconnect(id);
+                } catch (e) {
+                    // Actor may already be destroyed
+                }
+            }
+            this._pendingFirstFrame.clear();
         }
 
         // Disconnect all per-window signals
