@@ -124,6 +124,109 @@ async fn should_dispatch_workspace_changed_event() {
     let _ = std::fs::remove_file(&sock);
 }
 
+// ===========================================================================
+// MenuKeyPressed dispatch
+// ===========================================================================
+
+/// Send a MenuKeyPressed event with Escape and verify daemon stays alive.
+#[tokio::test]
+async fn should_dispatch_menu_key_pressed_escape() {
+    // Arrange
+    let sock = test_socket_path("event-menu-esc");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — send MenuKeyPressed Escape
+    tx.send(Event::MenuKeyPressed {
+        key: "Escape".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon still alive
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
+/// Send a MenuKeyPressed event with digit "1" and verify daemon stays alive.
+#[tokio::test]
+async fn should_dispatch_menu_key_pressed_digit() {
+    // Arrange
+    let sock = test_socket_path("event-menu-digit");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — send MenuKeyPressed digit
+    tx.send(Event::MenuKeyPressed {
+        key: "1".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon still alive
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
+/// Send a MenuKeyPressed event with unknown key "F5" and verify daemon stays alive.
+#[tokio::test]
+async fn should_ignore_unknown_menu_key() {
+    // Arrange
+    let sock = test_socket_path("event-menu-unknown");
+    let _ = std::fs::remove_file(&sock);
+    let sock2 = sock.clone();
+    let proxy = make_proxy();
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let daemon = tokio::spawn(async move {
+        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+    });
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Act — send MenuKeyPressed with unknown key
+    tx.send(Event::MenuKeyPressed {
+        key: "F5".into(),
+        modifiers: "".into(),
+    })
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Assert — daemon still alive
+    let resp = send_command(&sock, Command::Status).await.unwrap();
+    assert_eq!(resp, Response::Ok);
+
+    // Cleanup
+    let _ = send_command(&sock, Command::Shutdown).await;
+    let _ = daemon.await;
+    let _ = std::fs::remove_file(&sock);
+}
+
 /// Backward compatibility: start daemon with None for the event receiver, verify IPC still works.
 #[tokio::test]
 async fn should_work_without_event_receiver() {
