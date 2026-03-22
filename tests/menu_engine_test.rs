@@ -412,3 +412,112 @@ async fn should_not_call_show_or_hide_on_noop_input() {
     assert!(engine.proxy().show_menu_calls().is_empty(), "show_menu should not be called on noop");
     assert_eq!(engine.proxy().hide_menu_count(), 0, "hide_menu should not be called on noop");
 }
+
+// ===========================================================================
+// 9. Integration: full menu lifecycle and multi-cycle scenarios
+// ===========================================================================
+
+#[tokio::test]
+async fn should_complete_full_menu_lifecycle_with_correct_proxy_calls() {
+    let windows = two_windows_on_monitor_1();
+    let proxy = make_proxy(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Step 1: Closed -> Overview (ToggleMenu)
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    assert_eq!(engine.menu_state(), MenuState::Overview);
+
+    // Step 2: Overview -> ZoomedIn(1) (PressN)
+    engine.handle_menu_input(MenuInput::PressN(1)).await.unwrap();
+    assert_eq!(engine.menu_state(), MenuState::ZoomedIn(1));
+
+    // Step 3: ZoomedIn -> Closed (Digit — ApplyLayout)
+    engine.handle_menu_input(MenuInput::Digit(2)).await.unwrap();
+    assert_eq!(engine.menu_state(), MenuState::Closed);
+
+    // Verify the full sequence of proxy calls
+    assert_eq!(
+        engine.proxy().show_menu_calls().len(), 1,
+        "show_menu should be called exactly once during the lifecycle"
+    );
+    assert_eq!(
+        engine.proxy().show_menu_zoomed_calls().len(), 1,
+        "show_menu_zoomed should be called exactly once during the lifecycle"
+    );
+    assert_eq!(
+        engine.proxy().show_menu_zoomed_calls()[0].0, 1,
+        "show_menu_zoomed should target monitor 1"
+    );
+    assert_eq!(
+        engine.proxy().hide_menu_count(), 1,
+        "hide_menu should be called exactly once during the lifecycle"
+    );
+
+    // Verify layout was actually applied
+    let desktop = engine.desktop_ref(0).expect("desktop should exist");
+    assert_eq!(
+        desktop.get_layout(1),
+        Some(LayoutPreset::SideBySide),
+        "SideBySide layout should be applied to monitor 1"
+    );
+
+    // Verify move_resize was called for the windows
+    assert!(
+        engine.proxy().move_resize_calls().len() >= 2,
+        "move_resize should have been called for the 2 windows on monitor 1"
+    );
+}
+
+#[tokio::test]
+async fn should_track_multiple_open_close_cycles() {
+    let proxy = make_proxy(two_monitors(), vec![]);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Cycle 1: open and close via toggle
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    assert_eq!(engine.menu_state(), MenuState::Overview);
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    assert_eq!(engine.menu_state(), MenuState::Closed);
+
+    // Cycle 2: open and close via toggle
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    assert_eq!(engine.menu_state(), MenuState::Overview);
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    assert_eq!(engine.menu_state(), MenuState::Closed);
+
+    assert_eq!(
+        engine.proxy().show_menu_calls().len(), 2,
+        "show_menu should be called twice across two open/close cycles"
+    );
+    assert_eq!(
+        engine.proxy().hide_menu_count(), 2,
+        "hide_menu should be called twice across two open/close cycles"
+    );
+}
+
+#[tokio::test]
+async fn should_serialize_all_monitors_in_show_menu_json() {
+    let proxy = make_proxy(two_monitors(), vec![]);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+
+    let calls = engine.proxy().show_menu_calls();
+    assert_eq!(calls.len(), 1);
+
+    // Deserialize the JSON and verify it contains both monitors
+    let monitors: Vec<MonitorInfo> = serde_json::from_str(&calls[0])
+        .expect("show_menu JSON should deserialize to Vec<MonitorInfo>");
+    assert_eq!(monitors.len(), 2, "JSON should contain both monitors");
+    assert_eq!(monitors[0].id, 0);
+    assert_eq!(monitors[0].name, "DP-1");
+    assert_eq!(monitors[0].width, 1920);
+    assert_eq!(monitors[0].height, 1080);
+    assert_eq!(monitors[1].id, 1);
+    assert_eq!(monitors[1].name, "DP-2");
+    assert_eq!(monitors[1].x, 1920);
+    assert_eq!(monitors[1].width, 1920);
+}
