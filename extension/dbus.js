@@ -33,6 +33,14 @@ const INTERFACE_XML = `
       <arg name="window_id" type="t" direction="in"/>
       <arg name="is_fullscreen" type="b" direction="out"/>
     </method>
+    <method name="ShowMenu">
+      <arg name="monitors_json" type="s" direction="in"/>
+    </method>
+    <method name="ShowMenuZoomed">
+      <arg name="monitor_id" type="u" direction="in"/>
+      <arg name="layouts_json" type="s" direction="in"/>
+    </method>
+    <method name="HideMenu"/>
     <signal name="WindowOpened">
       <arg name="window_id" type="t"/>
       <arg name="title" type="s"/>
@@ -69,6 +77,7 @@ export class TilerDBusService {
     constructor() {
         this._dbusImpl = null;
         this._nameOwnerId = 0;
+        this._menuOverlay = null;
     }
 
     register() {
@@ -90,6 +99,7 @@ export class TilerDBusService {
     }
 
     destroy() {
+        this._menuOverlay = null;
         if (this._dbusImpl) {
             this._dbusImpl.unexport();
             this._dbusImpl = null;
@@ -98,6 +108,10 @@ export class TilerDBusService {
             Gio.bus_unown_name(this._nameOwnerId);
             this._nameOwnerId = 0;
         }
+    }
+
+    setMenuOverlay(overlay) {
+        this._menuOverlay = overlay;
     }
 
     // --- D-Bus Method Implementations ---
@@ -213,6 +227,21 @@ export class TilerDBusService {
             return false;
 
         return win.is_fullscreen();
+    }
+
+    ShowMenu(monitorsJson) {
+        if (this._menuOverlay)
+            this._menuOverlay.showOverview(monitorsJson);
+    }
+
+    ShowMenuZoomed(monitorId, layoutsJson) {
+        if (this._menuOverlay)
+            this._menuOverlay.showZoomed(monitorId, layoutsJson);
+    }
+
+    HideMenu() {
+        if (this._menuOverlay)
+            this._menuOverlay.hide();
     }
 
     // --- Signal Emission Helpers ---
