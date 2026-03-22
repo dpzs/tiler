@@ -73,7 +73,7 @@ export default class TilerExtension extends Extension {
         const app = tracker.get_window_app(win);
         const appClass = app ? app.get_id() : '';
 
-        this._dbusService.emitWindowOpened(windowId, title, appClass);
+        this._dbusService.emitWindowOpened(windowId, title, appClass, win.get_monitor());
 
         const perWindowSignals = [];
 

@@ -86,8 +86,8 @@ pub async fn run_daemon<P: GnomeProxy + 'static>(
 
 async fn dispatch_event<P: GnomeProxy>(engine: &mut TilingEngine<P>, event: Event) {
     match event {
-        Event::WindowOpened { window_id, title, app_class } => {
-            let _ = engine.handle_window_opened(window_id, title, app_class).await;
+        Event::WindowOpened { window_id, title, app_class, monitor_id } => {
+            let _ = engine.handle_window_opened(window_id, title, app_class, monitor_id).await;
         }
         Event::WindowClosed { window_id } => {
             let _ = engine.handle_window_closed(window_id).await;

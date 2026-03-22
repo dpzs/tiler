@@ -92,7 +92,7 @@ async fn new_window_added_to_stack_and_retiled() {
     engine.startup().await.unwrap();
 
     // Open a new normal window
-    engine.handle_window_opened(1, "Term".into(), "terminal".into()).await.unwrap();
+    engine.handle_window_opened(1, "Term".into(), "terminal".into(), 0).await.unwrap();
 
     let calls = engine.proxy().move_resize_calls();
     // Single window = single move_resize
@@ -116,7 +116,7 @@ async fn new_window_retiles_all_stack_windows() {
     assert_eq!(startup_calls, 1);
 
     // Open window 2
-    engine.handle_window_opened(2, "B".into(), "b".into()).await.unwrap();
+    engine.handle_window_opened(2, "B".into(), "b".into(), 0).await.unwrap();
 
     // Should now have 1 (startup) + 2 (retile both) = 3 calls
     let total_calls = engine.proxy().move_resize_calls().len();
@@ -133,7 +133,7 @@ async fn new_fullscreen_window_ignored() {
 
     // Mark window as fullscreen before opening
     engine.proxy_mut().set_fullscreen(1, true);
-    engine.handle_window_opened(1, "FS".into(), "fs".into()).await.unwrap();
+    engine.handle_window_opened(1, "FS".into(), "fs".into(), 0).await.unwrap();
 
     let calls = engine.proxy().move_resize_calls();
     assert_eq!(calls.len(), 0);
@@ -308,17 +308,17 @@ async fn is_tiling_is_false_after_tile_stack_completes() {
 async fn geometry_changed_during_tiling_is_suppressed() {
     let monitors = two_monitors();
     let windows = vec![
-        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 1, workspace_id: 0 },
-        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 0 },
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy(monitors, windows);
 
     let mut engine = TilingEngine::new(proxy, 0);
     engine.startup().await.unwrap();
 
-    // Set up enforcement + layout on monitor 1 so snap-back would normally fire
-    engine.desktop_mut(0).set_enforcement(1, true);
-    engine.desktop_mut(0).set_layout(1, LayoutPreset::SideBySide);
+    // Set up enforcement + layout on monitor 0 so snap-back would normally fire
+    engine.desktop_mut(0).set_enforcement(0, true);
+    engine.desktop_mut(0).set_layout(0, LayoutPreset::SideBySide);
 
     let calls_before = engine.proxy().move_resize_calls().len();
 
@@ -353,4 +353,42 @@ async fn geometry_changed_during_tiling_is_suppressed() {
         1,
         "snap-back should occur when is_tiling is false and enforcement is active"
     );
+}
+
+// --- Monitor guard in startup ---
+
+#[tokio::test]
+async fn startup_should_not_tile_windows_on_non_stack_monitors() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 3, title: "C".into(), app_class: "c".into(), monitor_id: 1, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    // stack_screen_index=0 means only monitor 0 windows should be tiled
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Only windows 1 and 2 (on monitor 0) should have been moved
+    let calls = engine.proxy().move_resize_calls();
+    assert_eq!(calls.len(), 2, "only stack-screen windows should be tiled at startup");
+}
+
+#[tokio::test]
+async fn startup_should_not_add_non_stack_monitor_windows_to_desktop() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Only window 1 should be in the desktop stack
+    let desktop = engine.desktop_mut(0);
+    assert_eq!(desktop.stack_windows, vec![1], "non-stack-monitor windows should not be in desktop stack");
 }

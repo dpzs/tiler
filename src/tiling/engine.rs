@@ -148,7 +148,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 is_toplevel: is_tl,
             };
 
-            if is_tl && !is_fs {
+            if is_tl && !is_fs && w.monitor_id == self.stack_screen_index as u32 {
                 self.desktop(w.workspace_id).append_window(w.id);
             }
 
@@ -165,6 +165,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
         window_id: u64,
         _title: String,
         _app_class: String,
+        monitor_id: u32,
     ) -> ProxyResult<()> {
         let wtype = self.proxy.get_window_type(window_id).await?;
         let is_fs = self.proxy.is_fullscreen(window_id).await?;
@@ -173,14 +174,14 @@ impl<P: GnomeProxy> TilingEngine<P> {
         let tracked = TrackedWindow {
             id: window_id,
             workspace_id: self.active_workspace,
-            monitor_id: self.stack_screen_index as u32,
+            monitor_id,
             is_fullscreen: is_fs,
             is_toplevel: is_tl,
         };
 
         self.windows.insert(window_id, tracked);
 
-        if is_tl && !is_fs {
+        if is_tl && !is_fs && monitor_id == self.stack_screen_index as u32 {
             self.desktop(self.active_workspace)
                 .push_window(window_id);
             self.tile_stack(self.active_workspace).await?;

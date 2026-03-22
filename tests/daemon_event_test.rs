@@ -51,6 +51,7 @@ async fn should_accept_event_receiver_parameter() {
         window_id: 100,
         title: "Test".into(),
         app_class: "test-app".into(),
+        monitor_id: 0,
     })
     .unwrap();
 

@@ -53,6 +53,7 @@
       <arg name="window_id" type="t"/>
       <arg name="title" type="s"/>
       <arg name="app_class" type="s"/>
+      <arg name="monitor_id" type="u"/>
     </signal>
 
     <signal name="WindowClosed">

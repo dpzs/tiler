@@ -45,6 +45,7 @@ const INTERFACE_XML = `
       <arg name="window_id" type="t"/>
       <arg name="title" type="s"/>
       <arg name="app_class" type="s"/>
+      <arg name="monitor_id" type="u"/>
     </signal>
     <signal name="WindowClosed">
       <arg name="window_id" type="t"/>
@@ -270,9 +271,9 @@ export class TilerDBusService {
 
     // --- Signal Emission Helpers ---
 
-    emitWindowOpened(windowId, title, appClass) {
+    emitWindowOpened(windowId, title, appClass, monitorId) {
         this._emitSignal('WindowOpened',
-            new GLib.Variant('(tss)', [windowId, title, appClass]));
+            new GLib.Variant('(tssu)', [windowId, title, appClass, monitorId]));
     }
 
     emitWindowClosed(windowId) {
