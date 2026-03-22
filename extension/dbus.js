@@ -151,6 +151,8 @@ export class TilerDBusService {
                 id: i,
                 name: this._getMonitorConnector(display, i),
                 position: i,
+                x: geom.x,
+                y: geom.y,
                 width: geom.width,
                 height: geom.height,
             });

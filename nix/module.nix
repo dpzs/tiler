@@ -81,10 +81,13 @@ in
       };
     };
 
-    # Configure keybinding via dconf
+    # Enable the GNOME Shell extension and configure keybinding via dconf
     programs.dconf.enable = true;
     programs.dconf.profiles.user.databases = [{
       settings = {
+        "org/gnome/shell" = {
+          enabled-extensions = [ "tiler@gnome-extensions" ];
+        };
         "org/gnome/settings-daemon/plugins/media-keys" = {
           custom-keybindings = [ "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/tiler/" ];
         };
