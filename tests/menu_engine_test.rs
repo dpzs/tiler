@@ -293,3 +293,122 @@ async fn should_handle_move_window_without_panic() {
     assert!(result.is_ok(), "MoveWindow should not panic or error");
     assert_eq!(engine.menu_state(), MenuState::Closed);
 }
+
+// ===========================================================================
+// 8. Proxy menu calls (show_menu, show_menu_zoomed, hide_menu)
+// ===========================================================================
+
+#[tokio::test]
+async fn should_call_show_menu_on_toggle_from_closed() {
+    let proxy = make_proxy(two_monitors(), vec![]);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+
+    let calls = engine.proxy().show_menu_calls();
+    assert_eq!(calls.len(), 1, "show_menu should be called once on toggle from Closed");
+    // The JSON should contain monitor data
+    assert!(calls[0].contains("DP-1"), "show_menu JSON should contain monitor names");
+}
+
+#[tokio::test]
+async fn should_call_hide_menu_on_toggle_from_overview() {
+    let proxy = make_proxy(two_monitors(), vec![]);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Open menu
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    // Close menu via toggle
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+
+    assert_eq!(engine.proxy().hide_menu_count(), 1, "hide_menu should be called once on toggle from Overview");
+}
+
+#[tokio::test]
+async fn should_call_hide_menu_on_escape_from_overview() {
+    let proxy = make_proxy(two_monitors(), vec![]);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Open menu
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    // Close menu via Escape
+    engine.handle_menu_input(MenuInput::Escape).await.unwrap();
+
+    assert_eq!(engine.proxy().hide_menu_count(), 1, "hide_menu should be called once on Escape from Overview");
+}
+
+#[tokio::test]
+async fn should_call_show_menu_zoomed_on_press_n() {
+    let proxy = make_proxy(two_monitors(), vec![]);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Open menu then zoom into monitor 1
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    engine.handle_menu_input(MenuInput::PressN(1)).await.unwrap();
+
+    let calls = engine.proxy().show_menu_zoomed_calls();
+    assert_eq!(calls.len(), 1, "show_menu_zoomed should be called once on PressN");
+    assert_eq!(calls[0].0, 1, "show_menu_zoomed should be called with monitor_id == 1");
+}
+
+#[tokio::test]
+async fn should_call_hide_menu_on_escape_from_zoomed() {
+    let proxy = make_proxy(two_monitors(), vec![]);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Open menu, zoom in, then Escape
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    engine.handle_menu_input(MenuInput::PressN(1)).await.unwrap();
+    engine.handle_menu_input(MenuInput::Escape).await.unwrap();
+
+    assert_eq!(engine.proxy().hide_menu_count(), 1, "hide_menu should be called once on Escape from ZoomedIn");
+}
+
+#[tokio::test]
+async fn should_call_hide_menu_on_digit_from_zoomed() {
+    let windows = two_windows_on_monitor_1();
+    let proxy = make_proxy(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Open menu, zoom into monitor 1, apply layout via Digit(2)
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    engine.handle_menu_input(MenuInput::PressN(1)).await.unwrap();
+    engine.handle_menu_input(MenuInput::Digit(2)).await.unwrap();
+
+    assert_eq!(engine.proxy().hide_menu_count(), 1, "hide_menu should be called once on Digit from ZoomedIn");
+}
+
+#[tokio::test]
+async fn should_call_hide_menu_on_shift_n_from_overview() {
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(two_monitors(), windows);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Open menu, then ShiftN(1) to move window
+    engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
+    engine.handle_menu_input(MenuInput::ShiftN(1)).await.unwrap();
+
+    assert_eq!(engine.proxy().hide_menu_count(), 1, "hide_menu should be called once on ShiftN from Overview");
+}
+
+#[tokio::test]
+async fn should_not_call_show_or_hide_on_noop_input() {
+    let proxy = make_proxy(two_monitors(), vec![]);
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Escape when already Closed — should be a no-op
+    engine.handle_menu_input(MenuInput::Escape).await.unwrap();
+
+    assert!(engine.proxy().show_menu_calls().is_empty(), "show_menu should not be called on noop");
+    assert_eq!(engine.proxy().hide_menu_count(), 0, "hide_menu should not be called on noop");
+}

@@ -318,8 +318,26 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
     /// Process a menu input, transitioning state and executing any resulting action.
     pub async fn handle_menu_input(&mut self, input: MenuInput) -> ProxyResult<()> {
+        let old_state = self.menu;
         let (new_state, action) = self.menu.transition(input);
         self.menu = new_state;
+
+        // Closed -> Overview: show the menu overlay
+        if old_state == MenuState::Closed && new_state == MenuState::Overview {
+            let monitors_json = serde_json::to_string(&self.monitors)
+                .unwrap_or_else(|_| "[]".to_string());
+            self.proxy.show_menu(&monitors_json).await?;
+        }
+
+        // ZoomIn: show zoomed view for a specific monitor
+        if let Some(MenuAction::ZoomIn(monitor_id)) = action {
+            self.proxy.show_menu_zoomed(monitor_id, "[]").await?;
+        }
+
+        // Any transition TO Closed from a non-Closed state: hide the menu
+        if new_state == MenuState::Closed && old_state != MenuState::Closed {
+            self.proxy.hide_menu().await?;
+        }
 
         if let Some(action) = action {
             match action {
