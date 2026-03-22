@@ -6,7 +6,12 @@ let
   cfg = config.services.tiler;
   tomlFormat = pkgs.formats.toml { };
 
-  configFile = tomlFormat.generate "tiler-config.toml" cfg.settings;
+  # Always generate config — merge user settings with defaults
+  effectiveSettings = {
+    stack_screen_position = "left";
+  } // cfg.settings;
+
+  configFile = tomlFormat.generate "tiler-config.toml" effectiveSettings;
 in
 {
   options.services.tiler = {
@@ -58,10 +63,8 @@ in
       cfg.gnomeExtensionPackage
     ];
 
-    # Generate TOML config file at /etc/tiler/config.toml
-    environment.etc."tiler/config.toml" = lib.mkIf (cfg.settings != { }) {
-      source = configFile;
-    };
+    # Always generate config file with defaults
+    environment.etc."tiler/config.toml".source = configFile;
 
     # systemd user service for the tiler daemon
     systemd.user.services.tiler = {
@@ -78,7 +81,7 @@ in
       };
     };
 
-    # Configure keybinding via dconf/gsettings
+    # Configure keybinding via dconf
     programs.dconf.enable = true;
     programs.dconf.profiles.user.databases = [{
       settings = {
