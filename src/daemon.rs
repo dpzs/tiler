@@ -104,8 +104,12 @@ async fn dispatch_event<P: GnomeProxy>(engine: &mut TilingEngine<P>, event: Even
         Event::WindowGeometryChanged { window_id, x, y, width, height } => {
             let _ = engine.handle_geometry_changed(window_id, x, y, width, height).await;
         }
-        Event::MenuKeyPressed { key: _, modifiers: _ } => {
-            // TODO: Parse key into MenuInput and dispatch
+        Event::MenuKeyPressed { key, modifiers } => {
+            if let Some(input) = crate::menu::key_parse::parse_menu_key(
+                &key, &modifiers, engine.menu_state()
+            ) {
+                let _ = engine.handle_menu_input(input).await;
+            }
         }
     }
 }
