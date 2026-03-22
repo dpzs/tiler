@@ -6,11 +6,19 @@ fn tiler_bin() -> Command {
 
 #[test]
 fn should_exit_nonzero_when_menu_and_no_daemon() {
+    // Arrange — isolate from any live daemon socket
+    let tmp = std::env::temp_dir().join(format!("tiler-test-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+
     // Act
     let output = tiler_bin()
+        .env("XDG_RUNTIME_DIR", &tmp)
         .arg("menu")
         .output()
         .expect("failed to execute tiler binary");
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&tmp);
 
     // Assert
     assert!(
@@ -27,11 +35,19 @@ fn should_exit_nonzero_when_menu_and_no_daemon() {
 
 #[test]
 fn should_exit_nonzero_when_status_and_no_daemon() {
+    // Arrange — isolate from any live daemon socket
+    let tmp = std::env::temp_dir().join(format!("tiler-test-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+
     // Act
     let output = tiler_bin()
+        .env("XDG_RUNTIME_DIR", &tmp)
         .arg("status")
         .output()
         .expect("failed to execute tiler binary");
+
+    // Cleanup
+    let _ = std::fs::remove_dir_all(&tmp);
 
     // Assert
     assert!(
