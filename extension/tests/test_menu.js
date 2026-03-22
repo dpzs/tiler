@@ -164,5 +164,29 @@ export default function tests() {
         '_onKeyPressEvent must not have special Escape key comparison'
       );
     }),
+
+    // B4: Menu overlay must cover all monitors, not just the primary
+    test('menu.js sizes overlay from all monitors, not just primaryMonitor', () => {
+      const src = getSrc();
+      const defIdx = src.indexOf('_buildOverlay() {');
+      const bodyEnd = src.indexOf('grab_key_focus', defIdx);
+      const buildBody = src.substring(defIdx, bodyEnd);
+      assert.ok(
+        !buildBody.includes('primaryMonitor'),
+        '_buildOverlay must not use primaryMonitor — overlay must span all monitors'
+      );
+    }),
+
+    test('menu.js computes bounding box from layoutManager.monitors', () => {
+      const src = getSrc();
+      const defIdx = src.indexOf('_buildOverlay() {');
+      const bodyEnd = src.indexOf('grab_key_focus', defIdx);
+      const buildBody = src.substring(defIdx, bodyEnd);
+      assert.ok(
+        buildBody.includes('layoutManager.monitors') ||
+        buildBody.includes('Main.layoutManager.monitors'),
+        '_buildOverlay must iterate Main.layoutManager.monitors for multi-monitor bounding box'
+      );
+    }),
   ];
 }

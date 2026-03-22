@@ -109,11 +109,16 @@ export class MenuOverlay {
 
         Main.layoutManager.addTopChrome(this._overlay);
 
-        const primary = Main.layoutManager.primaryMonitor;
-        if (primary) {
-            this._overlay.set_size(primary.width, primary.height);
-            this._overlay.set_position(primary.x, primary.y);
+        const monitors = Main.layoutManager.monitors;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const m of monitors) {
+            minX = Math.min(minX, m.x);
+            minY = Math.min(minY, m.y);
+            maxX = Math.max(maxX, m.x + m.width);
+            maxY = Math.max(maxY, m.y + m.height);
         }
+        this._overlay.set_size(maxX - minX, maxY - minY);
+        this._overlay.set_position(minX, minY);
 
         this._overlay.grab_key_focus();
     }
