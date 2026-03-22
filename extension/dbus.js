@@ -110,6 +110,12 @@ export class TilerDBusService {
         }
     }
 
+    /**
+     * Register the menu overlay instance that ShowMenu/ShowMenuZoomed/HideMenu
+     * will delegate to. Must be called before the daemon issues menu commands.
+     * @param {object} overlay - A MenuOverlay instance exposing showOverview,
+     *   showZoomed, and hide methods.
+     */
     setMenuOverlay(overlay) {
         this._menuOverlay = overlay;
     }
@@ -229,16 +235,29 @@ export class TilerDBusService {
         return win.is_fullscreen();
     }
 
+    /**
+     * D-Bus method: show the menu overlay in overview mode.
+     * @param {string} monitorsJson - JSON array of monitor descriptors.
+     */
     ShowMenu(monitorsJson) {
         if (this._menuOverlay)
             this._menuOverlay.showOverview(monitorsJson);
     }
 
+    /**
+     * D-Bus method: show the menu overlay zoomed into a specific monitor's
+     * layout picker.
+     * @param {number} monitorId - Zero-based monitor index.
+     * @param {string} layoutsJson - JSON array of available layout presets.
+     */
     ShowMenuZoomed(monitorId, layoutsJson) {
         if (this._menuOverlay)
             this._menuOverlay.showZoomed(monitorId, layoutsJson);
     }
 
+    /**
+     * D-Bus method: hide the menu overlay.
+     */
     HideMenu() {
         if (this._menuOverlay)
             this._menuOverlay.hide();

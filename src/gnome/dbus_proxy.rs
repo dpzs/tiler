@@ -37,8 +37,18 @@ pub trait GnomeProxy: Send {
     fn get_active_workspace(&self) -> impl std::future::Future<Output = ProxyResult<u32>> + Send;
     fn get_window_type(&self, window_id: u64) -> impl std::future::Future<Output = ProxyResult<String>> + Send;
     fn is_fullscreen(&self, window_id: u64) -> impl std::future::Future<Output = ProxyResult<bool>> + Send;
+    /// Show the menu overlay in overview mode.
+    ///
+    /// `monitors_json` is a JSON-serialised array of [`MonitorInfo`] describing
+    /// all connected monitors. The extension uses this to render the monitor
+    /// picker UI.
     fn show_menu(&mut self, monitors_json: &str) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
+    /// Show the menu overlay zoomed into a specific monitor's layout picker.
+    ///
+    /// `monitor_id` identifies the target monitor. `layouts_json` is a
+    /// JSON-serialised array of available layout presets for that monitor.
     fn show_menu_zoomed(&mut self, monitor_id: u32, layouts_json: &str) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
+    /// Hide the menu overlay, returning to the idle state.
     fn hide_menu(&mut self) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
 }
 
