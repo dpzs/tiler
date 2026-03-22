@@ -78,21 +78,19 @@ in
       };
     };
 
-    # Install keybinding via dconf system database
-    environment.etc."dconf/db/local.d/01-tiler-keybinding".text = ''
-      [org/gnome/settings-daemon/plugins/media-keys]
-      custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/tiler/']
-
-      [org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/tiler]
-      name='Tiler Menu'
-      command='${cfg.package}/bin/tiler menu'
-      binding='${cfg.keybinding}'
-    '';
-
-    # Ensure the dconf local profile includes the local database
-    environment.etc."dconf/profile/user".text = lib.mkDefault ''
-      user-db:user
-      system-db:local
-    '';
+    # Configure keybinding via dconf/gsettings
+    programs.dconf.enable = true;
+    programs.dconf.profiles.user.databases = [{
+      settings = {
+        "org/gnome/settings-daemon/plugins/media-keys" = {
+          custom-keybindings = [ "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/tiler/" ];
+        };
+        "org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/tiler" = {
+          name = "Tiler Menu";
+          command = "${cfg.package}/bin/tiler menu";
+          binding = cfg.keybinding;
+        };
+      };
+    }];
   };
 }
