@@ -284,3 +284,59 @@ fn test_stack_layout_window_order_preserved() {
     assert_eq!(result[2].0, 1, "oldest at bottom");
     assert_eq!(result[2].1.y, row_h * 2);
 }
+
+// ---------------------------------------------------------------------------
+// Pixel-rounding: odd dimensions must not leave gaps
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_stack_layout_odd_width_two_columns() {
+    // Arrange — odd width: 1441 / 2 = 720 remainder 1
+    let ids: Vec<u64> = (1..=6).collect(); // 2 columns: 5+1
+    let s = Rect { x: 0, y: 0, width: 1441, height: 1080 };
+
+    // Act
+    let result = stack_layout(&ids, s);
+
+    // Assert
+    assert_eq!(result.len(), 6);
+
+    // Column 1: windows 0-4 have width 720 and x=0
+    for i in 0..5 {
+        assert_eq!(result[i].1.x, 0, "col 1 window {} x", i);
+        assert_eq!(result[i].1.width, 720, "col 1 window {} width", i);
+    }
+
+    // Column 2: window 5 has width 721 and x=720 (absorbs remainder)
+    assert_eq!(result[5].1.x, 720, "col 2 x");
+    assert_eq!(result[5].1.width, 721, "col 2 absorbs remainder: 1441 - 720 = 721");
+    assert_eq!(720 + 721, 1441, "total width must equal screen width");
+}
+
+#[test]
+fn test_stack_layout_odd_height_three_rows() {
+    // Arrange — odd height: 1081 / 3 = 360 remainder 1
+    let ids: Vec<u64> = (1..=3).collect(); // 1 column, 3 rows
+    let s = Rect { x: 0, y: 0, width: 1920, height: 1081 };
+
+    // Act
+    let result = stack_layout(&ids, s);
+
+    // Assert
+    assert_eq!(result.len(), 3);
+
+    // First two rows: height 360
+    assert_eq!(result[0].1.height, 360, "row 0 height");
+    assert_eq!(result[0].1.y, 0, "row 0 y");
+    assert_eq!(result[1].1.height, 360, "row 1 height");
+    assert_eq!(result[1].1.y, 360, "row 1 y");
+
+    // Last row absorbs remainder: 1081 - 360*2 = 361
+    assert_eq!(result[2].1.height, 361, "last row absorbs remainder");
+    assert_eq!(result[2].1.y, 720, "last row y = 360 * 2");
+    assert_eq!(
+        360 + 360 + 361,
+        1081,
+        "total height must equal screen height"
+    );
+}

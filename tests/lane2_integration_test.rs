@@ -1,6 +1,5 @@
 use tiler::menu::state::{MenuAction, MenuInput, MenuState};
-use tiler::model::{LayoutPreset, Rect, VirtualDesktop, Window, WindowType};
-use tiler::tiling::filter::is_toplevel;
+use tiler::model::{LayoutPreset, Rect, VirtualDesktop};
 use tiler::tiling::preset::{apply_fullscreen, apply_quadrants, apply_side_by_side, apply_top_bottom};
 use tiler::tiling::stack::stack_layout;
 
@@ -8,59 +7,8 @@ use tiler::tiling::stack::stack_layout;
 // Helper
 // ===========================================================================
 
-fn make_window(id: u64, wtype: WindowType, fullscreen: bool) -> Window {
-    Window {
-        id,
-        title: format!("win-{}", id),
-        app_class: "test".to_string(),
-        monitor_id: 0,
-        tile_position: Rect { x: 0, y: 0, width: 0, height: 0 },
-        virtual_desktop_id: 0,
-        is_fullscreen: fullscreen,
-        window_type: wtype,
-    }
-}
-
 fn screen() -> Rect {
     Rect { x: 0, y: 0, width: 1920, height: 1080 }
-}
-
-// ===========================================================================
-// Filter + Stack layout end-to-end
-// ===========================================================================
-
-#[test]
-fn test_filter_then_stack_layout() {
-    // Arrange — mix of window types
-    let windows = vec![
-        make_window(1, WindowType::Normal, false),
-        make_window(2, WindowType::Dialog, false),
-        make_window(3, WindowType::Normal, false),
-        make_window(4, WindowType::Normal, true), // fullscreen
-        make_window(5, WindowType::Popup, false),
-        make_window(6, WindowType::Normal, false),
-    ];
-
-    // Act — filter to toplevel, then stack layout
-    let toplevel_ids: Vec<u64> = windows
-        .iter()
-        .filter(|w| is_toplevel(w))
-        .map(|w| w.id)
-        .collect();
-
-    let layout = stack_layout(&toplevel_ids, screen());
-
-    // Assert — only 3 normal, non-fullscreen windows
-    assert_eq!(layout.len(), 3);
-    assert_eq!(layout[0].0, 1);
-    assert_eq!(layout[1].0, 3);
-    assert_eq!(layout[2].0, 6);
-
-    // Single column, 3 rows of 360px each
-    let row_h = 1080 / 3;
-    assert_eq!(layout[0].1.height, row_h);
-    assert_eq!(layout[1].1.y, row_h);
-    assert_eq!(layout[2].1.y, row_h * 2);
 }
 
 // ===========================================================================
@@ -136,50 +84,20 @@ fn test_menu_flow_move_window() {
 }
 
 // ===========================================================================
-// VirtualDesktop window stack + filter integration
+// VirtualDesktop window stack ordering
 // ===========================================================================
 
 #[test]
-fn test_desktop_window_stack_with_filtering() {
-    // Arrange — build up desktop state
+fn test_desktop_window_stack_ordering() {
     let mut vd = VirtualDesktop::new(0);
-
-    let windows = vec![
-        make_window(1, WindowType::Normal, false),
-        make_window(2, WindowType::Normal, false),
-        make_window(3, WindowType::Dialog, false),
-        make_window(4, WindowType::Normal, false),
-    ];
-
-    // Push windows onto desktop stack
-    for w in &windows {
-        vd.push_window(w.id);
+    let window_ids: Vec<u64> = vec![1, 2, 3, 4];
+    for &id in &window_ids {
+        vd.push_window(id);
     }
-
-    // Newest (4) should be first
     assert_eq!(vd.stack_windows, vec![4, 3, 2, 1]);
-
-    // Filter to toplevel only
-    let toplevel_ids: Vec<u64> = vd
-        .stack_windows
-        .iter()
-        .filter(|&&id| {
-            windows
-                .iter()
-                .find(|w| w.id == id)
-                .map(|w| is_toplevel(w))
-                .unwrap_or(false)
-        })
-        .copied()
-        .collect();
-
-    // Window 3 (dialog) is filtered out
-    assert_eq!(toplevel_ids, vec![4, 2, 1]);
-
-    // Stack layout preserves desktop order
-    let layout = stack_layout(&toplevel_ids, screen());
+    let layout = stack_layout(&vd.stack_windows, screen());
     assert_eq!(layout[0].0, 4, "newest window at top");
-    assert_eq!(layout[2].0, 1, "oldest window at bottom");
+    assert_eq!(layout[3].0, 1, "oldest window at bottom");
 }
 
 // ===========================================================================

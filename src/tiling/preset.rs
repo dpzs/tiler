@@ -14,7 +14,7 @@ pub fn apply_side_by_side(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)>
     let half_w = monitor.width / 2;
     let slots = [
         Rect { x: monitor.x, y: monitor.y, width: half_w, height: monitor.height },
-        Rect { x: monitor.x + half_w, y: monitor.y, width: half_w, height: monitor.height },
+        Rect { x: monitor.x + half_w, y: monitor.y, width: monitor.width - half_w, height: monitor.height },
     ];
     window_ids
         .iter()
@@ -28,7 +28,7 @@ pub fn apply_top_bottom(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
     let half_h = monitor.height / 2;
     let slots = [
         Rect { x: monitor.x, y: monitor.y, width: monitor.width, height: half_h },
-        Rect { x: monitor.x, y: monitor.y + half_h, width: monitor.width, height: half_h },
+        Rect { x: monitor.x, y: monitor.y + half_h, width: monitor.width, height: monitor.height - half_h },
     ];
     window_ids
         .iter()
@@ -41,11 +41,13 @@ pub fn apply_top_bottom(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
 pub fn apply_quadrants(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
     let half_w = monitor.width / 2;
     let half_h = monitor.height / 2;
+    let right_w = monitor.width - half_w;
+    let bottom_h = monitor.height - half_h;
     let slots = [
         Rect { x: monitor.x, y: monitor.y, width: half_w, height: half_h },
-        Rect { x: monitor.x + half_w, y: monitor.y, width: half_w, height: half_h },
-        Rect { x: monitor.x, y: monitor.y + half_h, width: half_w, height: half_h },
-        Rect { x: monitor.x + half_w, y: monitor.y + half_h, width: half_w, height: half_h },
+        Rect { x: monitor.x + half_w, y: monitor.y, width: right_w, height: half_h },
+        Rect { x: monitor.x, y: monitor.y + half_h, width: half_w, height: bottom_h },
+        Rect { x: monitor.x + half_w, y: monitor.y + half_h, width: right_w, height: bottom_h },
     ];
     window_ids
         .iter()
