@@ -70,7 +70,7 @@ in
     systemd.user.services.tiler = {
       description = "Tiler — tiling window manager daemon for GNOME";
       partOf = [ "graphical-session.target" ];
-      after = [ "graphical-session.target" ];
+      after = [ "graphical-session.target" "tiler-keybinding.service" ];
       wantedBy = [ "graphical-session.target" ];
 
       serviceConfig = {
@@ -81,15 +81,50 @@ in
       };
     };
 
+    # Register tiler in the user's custom-keybindings list.
+    # programs.dconf.profiles provides system *defaults* which are
+    # overridden when the user-level dconf already carries a value for
+    # custom-keybindings (e.g. from GNOME Settings).  This oneshot
+    # writes directly to the user database so the entry is always
+    # present regardless of existing user settings.
+    systemd.user.services.tiler-keybinding = {
+      description = "Register tiler in GNOME custom-keybindings";
+      wantedBy = [ "graphical-session.target" ];
+      after = [ "graphical-session.target" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = let
+          tilerPath = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/tiler/";
+          dconfKey = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings";
+          dconf = "${pkgs.dconf}/bin/dconf";
+        in pkgs.writeShellScript "tiler-register-keybinding" ''
+          current=$(${dconf} read "${dconfKey}" 2>/dev/null)
+
+          # Already registered — nothing to do
+          if [[ "$current" == *"${tilerPath}"* ]]; then
+            exit 0
+          fi
+
+          # Empty or unset — create a new single-element array
+          if [[ -z "$current" ]] || [[ "$current" == "@as []" ]]; then
+            ${dconf} write "${dconfKey}" "['${tilerPath}']"
+            exit 0
+          fi
+
+          # Append to existing array
+          ${dconf} write "${dconfKey}" "''${current%]}, '${tilerPath}']"
+        '';
+      };
+    };
+
     # Enable the GNOME Shell extension and configure keybinding via dconf
     programs.dconf.enable = true;
     programs.dconf.profiles.user.databases = [{
       settings = {
         "org/gnome/shell" = {
           enabled-extensions = [ "tiler@gnome-extensions" ];
-        };
-        "org/gnome/settings-daemon/plugins/media-keys" = {
-          custom-keybindings = [ "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/tiler/" ];
         };
         "org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/tiler" = {
           name = "Tiler Menu";
