@@ -111,7 +111,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
     /// Check if a window type string represents a toplevel window.
     fn is_toplevel_type(wtype: &str) -> bool {
-        wtype == "normal"
+        wtype == "toplevel"
     }
 
     /// Initialize the engine: load monitors, enumerate existing windows, tile.
@@ -331,7 +331,15 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
         // ZoomIn: show zoomed view for a specific monitor
         if let Some(MenuAction::ZoomIn(monitor_id)) = action {
-            self.proxy.show_menu_zoomed(monitor_id, "[]").await?;
+            let layouts = [
+                LayoutPreset::Fullscreen,
+                LayoutPreset::SideBySide,
+                LayoutPreset::TopBottom,
+                LayoutPreset::Quadrants,
+            ];
+            let layouts_json = serde_json::to_string(&layouts)
+                .unwrap_or_else(|_| "[]".to_string());
+            self.proxy.show_menu_zoomed(monitor_id, &layouts_json).await?;
         }
 
         // Any transition TO Closed from a non-Closed state: hide the menu

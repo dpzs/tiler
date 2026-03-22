@@ -112,7 +112,7 @@ fn make_proxy_with_windows(monitors: Vec<MonitorInfo>, windows: Vec<WindowInfo>)
     proxy.set_monitors(monitors);
     proxy.set_windows(windows.clone());
     for w in &windows {
-        proxy.set_window_type(w.id, "normal".into());
+        proxy.set_window_type(w.id, "toplevel".into());
     }
     proxy
 }

@@ -13,7 +13,7 @@ fn make_proxy(monitors: Vec<MonitorInfo>, windows: Vec<WindowInfo>) -> MockGnome
     proxy.set_monitors(monitors);
     proxy.set_windows(windows);
     for w in proxy.list_windows_snapshot() {
-        proxy.set_window_type(w.id, "normal".into());
+        proxy.set_window_type(w.id, "toplevel".into());
     }
     proxy
 }

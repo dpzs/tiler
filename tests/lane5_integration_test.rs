@@ -33,7 +33,7 @@ fn make_proxy(monitors: Vec<MonitorInfo>, windows: Vec<WindowInfo>) -> MockGnome
     proxy.set_monitors(monitors);
     proxy.set_windows(windows.clone());
     for w in &windows {
-        proxy.set_window_type(w.id, "normal".into());
+        proxy.set_window_type(w.id, "toplevel".into());
     }
     proxy
 }
@@ -148,7 +148,7 @@ async fn should_enforce_layout_through_window_open_close_and_geometry_change() {
     let calls_baseline = engine.proxy().move_resize_calls().len();
 
     // Open a second window on monitor 1
-    engine.proxy_mut().set_window_type(2, "normal".into());
+    engine.proxy_mut().set_window_type(2, "toplevel".into());
     engine
         .handle_window_opened(2, "B".into(), "b".into())
         .await

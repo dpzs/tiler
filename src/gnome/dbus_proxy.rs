@@ -152,7 +152,7 @@ impl GnomeProxy for MockGnomeProxy {
             .window_types
             .get(&window_id)
             .cloned()
-            .unwrap_or_else(|| "normal".to_string()))
+            .unwrap_or_else(|| "toplevel".to_string()))
     }
 
     async fn is_fullscreen(&self, window_id: u64) -> ProxyResult<bool> {

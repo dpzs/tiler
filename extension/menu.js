@@ -11,16 +11,36 @@ const MENU_STATE = {
 };
 
 const LAYOUT_OPTIONS = [
-    { id: 1, name: 'Fullscreen', label: '1: Fullscreen', icon: '[ ]' },
-    { id: 2, name: 'SideBySide', label: '2: Side-by-side', icon: '[|]' },
-    { id: 3, name: 'TopBottom', label: '3: Top-bottom', icon: '[-]' },
-    { id: 4, name: 'Quadrants', label: '4: Quadrants', icon: '[+]' },
+    { id: 1, name: 'Fullscreen', label: '1: Fullscreen', icon: '⬜' },
+    { id: 2, name: 'SideBySide', label: '2: Side-by-side', icon: '◧' },
+    { id: 3, name: 'TopBottom', label: '3: Top-bottom', icon: '⬒' },
+    { id: 4, name: 'Quadrants', label: '4: Quadrants', icon: '◫' },
 ];
+
+// Map shifted digit symbols back to their base digit (US QWERTY).
+// When Shift is held, Clutter returns the shifted keysym (e.g. "exclam"
+// for Shift+1) instead of the digit.  The daemon expects plain "1"-"9".
+const SHIFTED_DIGIT_MAP = {
+    'exclam': '1',
+    'at': '2',
+    'numbersign': '3',
+    'dollar': '4',
+    'percent': '5',
+    'asciicircum': '6',
+    'ampersand': '7',
+    'asterisk': '8',
+    'parenleft': '9',
+    'parenright': '0',
+};
+
+// Max dimension (px) for the monitor orientation preview box.
+const PREVIEW_MAX = 72;
 
 export class MenuOverlay {
     constructor() {
         this._state = MENU_STATE.HIDDEN;
         this._overlay = null;
+        this._panel = null;
         this._monitors = [];
         this._zoomedMonitorId = null;
         this._keyCallback = null;
@@ -56,39 +76,43 @@ export class MenuOverlay {
         this._keyCallback = null;
     }
 
+    // -- Private: overlay scaffold ----------------------------------------
+
     _buildOverlay() {
         this._destroyOverlay();
 
+        // Full-screen dim backdrop
         this._overlay = new St.Widget({
             reactive: true,
-            x_expand: true,
-            y_expand: true,
-            style_class: 'tiler-menu-overlay',
+            layout_manager: new Clutter.BinLayout(),
+            style: 'background-color: rgba(0, 0, 0, 0.55);',
         });
 
-        // Semi-transparent background
-        this._overlay.set_style(
-            'background-color: rgba(0, 0, 0, 0.75); ' +
-            'border-radius: 12px; ' +
-            'padding: 24px;'
-        );
+        // Auto-sizing content panel, centered within the backdrop
+        this._panel = new St.BoxLayout({
+            vertical: true,
+            x_align: Clutter.ActorAlign.CENTER,
+            y_align: Clutter.ActorAlign.CENTER,
+            x_expand: true,
+            y_expand: true,
+            style:
+                'background-color: rgba(36, 36, 36, 0.96); ' +
+                'border-radius: 16px; ' +
+                'padding: 32px 40px; ' +
+                'border: 1px solid rgba(255,255,255,0.08);',
+        });
+        this._overlay.add_child(this._panel);
 
-        this._overlay.connect('key-press-event', (actor, event) => {
-            return this._onKeyPressEvent(actor, event);
+        this._overlay.connect('key-press-event', (_actor, event) => {
+            return this._onKeyPressEvent(_actor, event);
         });
 
         Main.layoutManager.addTopChrome(this._overlay);
 
-        // Center the overlay on the primary monitor
         const primary = Main.layoutManager.primaryMonitor;
         if (primary) {
-            const overlayWidth = Math.min(primary.width * 0.6, 800);
-            const overlayHeight = Math.min(primary.height * 0.5, 500);
-            this._overlay.set_size(overlayWidth, overlayHeight);
-            this._overlay.set_position(
-                primary.x + (primary.width - overlayWidth) / 2,
-                primary.y + (primary.height - overlayHeight) / 2,
-            );
+            this._overlay.set_size(primary.width, primary.height);
+            this._overlay.set_position(primary.x, primary.y);
         }
 
         this._overlay.grab_key_focus();
@@ -99,182 +123,189 @@ export class MenuOverlay {
             Main.layoutManager.removeChrome(this._overlay);
             this._overlay.destroy();
             this._overlay = null;
+            this._panel = null;
         }
     }
 
+    // -- Private: Overview mode -------------------------------------------
+
     _renderOverview() {
-        if (!this._overlay)
+        if (!this._panel)
             return;
 
-        const container = new St.BoxLayout({
-            vertical: true,
-            x_expand: true,
-            y_expand: true,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-
         // Title
-        const title = new St.Label({
+        this._panel.add_child(new St.Label({
             text: 'Tiler — Select Monitor',
-            style: 'font-size: 18px; font-weight: bold; color: white; margin-bottom: 16px;',
+            style:
+                'font-size: 16px; font-weight: bold; color: white; ' +
+                'margin-bottom: 20px;',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        container.add_child(title);
+        }));
 
-        // Monitor boxes in a horizontal row
+        // Monitor row
         const monitorRow = new St.BoxLayout({
             vertical: false,
             x_align: Clutter.ActorAlign.CENTER,
-            style: 'spacing: 12px;',
+            style: 'spacing: 16px;',
         });
 
-        for (const monitor of this._monitors) {
-            const monitorBox = this._createMonitorWidget(monitor);
-            monitorRow.add_child(monitorBox);
-        }
+        for (const monitor of this._monitors)
+            monitorRow.add_child(this._createMonitorWidget(monitor));
 
-        container.add_child(monitorRow);
+        this._panel.add_child(monitorRow);
 
-        // Instructions
-        const hint = new St.Label({
-            text: 'Press number to select | Shift+number to move window | Esc to close',
-            style: 'font-size: 12px; color: #aaa; margin-top: 16px;',
+        // Hint
+        this._panel.add_child(new St.Label({
+            text: 'Press number to select  ·  Shift+number to move window  ·  Esc to close',
+            style:
+                'font-size: 11px; color: rgba(255,255,255,0.45); ' +
+                'margin-top: 20px;',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        container.add_child(hint);
-
-        this._overlay.add_child(container);
+        }));
     }
 
     _createMonitorWidget(monitor) {
         const box = new St.BoxLayout({
             vertical: true,
+            x_align: Clutter.ActorAlign.CENTER,
             style:
-                'background-color: rgba(255,255,255,0.1); ' +
-                'border: 2px solid rgba(255,255,255,0.3); ' +
-                'border-radius: 8px; ' +
-                'padding: 12px; ' +
-                'min-width: 120px;',
-            x_align: Clutter.ActorAlign.CENTER,
+                'background-color: rgba(255,255,255,0.06); ' +
+                'border: 1px solid rgba(255,255,255,0.12); ' +
+                'border-radius: 10px; ' +
+                'padding: 16px 20px;',
         });
 
-        const label = new St.Label({
+        // Aspect-ratio-correct orientation preview
+        const w = monitor.width || 1;
+        const h = monitor.height || 1;
+        const scale = PREVIEW_MAX / Math.max(w, h);
+        const previewW = Math.round(w * scale);
+        const previewH = Math.round(h * scale);
+
+        const preview = new St.Widget({
+            style:
+                `width: ${previewW}px; height: ${previewH}px; ` +
+                'background-color: rgba(255,255,255,0.10); ' +
+                'border: 1px solid rgba(255,255,255,0.25); ' +
+                'border-radius: 4px;',
+            x_align: Clutter.ActorAlign.CENTER,
+        });
+        box.add_child(preview);
+
+        // Key number
+        box.add_child(new St.Label({
             text: `${monitor.id + 1}`,
-            style: 'font-size: 24px; font-weight: bold; color: white;',
+            style:
+                'font-size: 22px; font-weight: bold; color: white; ' +
+                'margin-top: 10px;',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        box.add_child(label);
+        }));
 
-        const nameLabel = new St.Label({
+        // Connector name
+        box.add_child(new St.Label({
             text: monitor.name || `Monitor ${monitor.id + 1}`,
-            style: 'font-size: 11px; color: #ccc;',
+            style: 'font-size: 11px; color: rgba(255,255,255,0.55);',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        box.add_child(nameLabel);
+        }));
 
-        const sizeLabel = new St.Label({
-            text: `${monitor.width}x${monitor.height}`,
-            style: 'font-size: 10px; color: #999;',
+        // Resolution
+        box.add_child(new St.Label({
+            text: `${monitor.width}\u00D7${monitor.height}`,
+            style:
+                'font-size: 10px; color: rgba(255,255,255,0.35); ' +
+                'margin-top: 2px;',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        box.add_child(sizeLabel);
+        }));
 
         return box;
     }
 
+    // -- Private: Zoomed (layout picker) mode -----------------------------
+
     _renderZoomed(monitorId, layouts) {
-        if (!this._overlay)
+        if (!this._panel)
             return;
 
-        const container = new St.BoxLayout({
-            vertical: true,
-            x_expand: true,
-            y_expand: true,
-            x_align: Clutter.ActorAlign.CENTER,
-            y_align: Clutter.ActorAlign.CENTER,
-        });
-
         // Title
-        const title = new St.Label({
+        this._panel.add_child(new St.Label({
             text: `Monitor ${monitorId + 1} — Select Layout`,
-            style: 'font-size: 18px; font-weight: bold; color: white; margin-bottom: 16px;',
+            style:
+                'font-size: 16px; font-weight: bold; color: white; ' +
+                'margin-bottom: 20px;',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        container.add_child(title);
+        }));
 
-        // Layout option grid (2x2)
+        // 2x2 layout grid
         const grid = new St.BoxLayout({
             vertical: true,
             x_align: Clutter.ActorAlign.CENTER,
-            style: 'spacing: 8px;',
+            style: 'spacing: 10px;',
         });
 
         for (let row = 0; row < 2; row++) {
             const rowBox = new St.BoxLayout({
                 vertical: false,
-                style: 'spacing: 8px;',
+                style: 'spacing: 10px;',
             });
 
             for (let col = 0; col < 2; col++) {
                 const idx = row * 2 + col;
-                if (idx < LAYOUT_OPTIONS.length) {
-                    const opt = LAYOUT_OPTIONS[idx];
-                    const widget = this._createLayoutOptionWidget(opt);
-                    rowBox.add_child(widget);
-                }
+                if (idx < LAYOUT_OPTIONS.length)
+                    rowBox.add_child(this._createLayoutOptionWidget(LAYOUT_OPTIONS[idx]));
             }
 
             grid.add_child(rowBox);
         }
 
-        container.add_child(grid);
+        this._panel.add_child(grid);
 
-        // Enforcement toggles
-        const enforcementHint = new St.Label({
-            text: '9: Enforce on | 0: Enforce off | Esc: Close',
-            style: 'font-size: 12px; color: #aaa; margin-top: 16px;',
+        // Enforcement hint
+        this._panel.add_child(new St.Label({
+            text: '9: Enforce on  ·  0: Enforce off  ·  Esc: Close',
+            style:
+                'font-size: 11px; color: rgba(255,255,255,0.45); ' +
+                'margin-top: 20px;',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        container.add_child(enforcementHint);
-
-        this._overlay.add_child(container);
+        }));
     }
 
     _createLayoutOptionWidget(option) {
         const box = new St.BoxLayout({
             vertical: true,
+            x_align: Clutter.ActorAlign.CENTER,
             style:
-                'background-color: rgba(255,255,255,0.1); ' +
-                'border: 1px solid rgba(255,255,255,0.2); ' +
-                'border-radius: 6px; ' +
-                'padding: 8px; ' +
-                'min-width: 100px;',
-            x_align: Clutter.ActorAlign.CENTER,
+                'background-color: rgba(255,255,255,0.06); ' +
+                'border: 1px solid rgba(255,255,255,0.10); ' +
+                'border-radius: 8px; ' +
+                'padding: 12px 16px; ' +
+                'min-width: 110px;',
         });
 
-        const icon = new St.Label({
+        box.add_child(new St.Label({
             text: option.icon,
-            style: 'font-size: 20px; font-family: monospace; color: white;',
+            style: 'font-size: 24px; color: white;',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        box.add_child(icon);
+        }));
 
-        const label = new St.Label({
+        box.add_child(new St.Label({
             text: option.label,
-            style: 'font-size: 11px; color: #ccc;',
+            style:
+                'font-size: 11px; color: rgba(255,255,255,0.7); ' +
+                'margin-top: 6px;',
             x_align: Clutter.ActorAlign.CENTER,
-        });
-        box.add_child(label);
+        }));
 
         return box;
     }
+
+    // -- Private: key handling --------------------------------------------
 
     _onKeyPressEvent(actor, event) {
         const keyval = event.get_key_symbol();
         const state = event.get_state();
 
-        const keyName = Clutter.keyval_name(keyval);
+        let keyName = Clutter.keyval_name(keyval);
+
         const modifiers = [];
         if (state & Clutter.ModifierType.SHIFT_MASK)
             modifiers.push('shift');
@@ -285,13 +316,16 @@ export class MenuOverlay {
         if (state & Clutter.ModifierType.SUPER_MASK)
             modifiers.push('super');
 
+        // Resolve shifted digit symbols to their base digit so the daemon
+        // receives "1"-"9" regardless of keyboard layout shift behaviour.
+        if (SHIFTED_DIGIT_MAP[keyName])
+            keyName = SHIFTED_DIGIT_MAP[keyName];
+
         const modString = modifiers.join('+');
 
-        // Forward key event to D-Bus callback
         if (this._keyCallback)
             this._keyCallback(keyName, modString);
 
-        // Handle Escape to close
         if (keyName === 'Escape') {
             this.hide();
             return Clutter.EVENT_STOP;
