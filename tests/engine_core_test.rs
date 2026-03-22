@@ -358,7 +358,7 @@ async fn geometry_changed_during_tiling_is_suppressed() {
 // --- Monitor guard in startup ---
 
 #[tokio::test]
-async fn startup_should_not_tile_windows_on_non_stack_monitors() {
+async fn startup_only_stacks_windows_on_stack_screen() {
     let monitors = two_monitors();
     let windows = vec![
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
@@ -392,3 +392,4 @@ async fn startup_should_not_add_non_stack_monitor_windows_to_desktop() {
     let desktop = engine.desktop_mut(0);
     assert_eq!(desktop.stack_windows, vec![1], "non-stack-monitor windows should not be in desktop stack");
 }
+

@@ -251,7 +251,7 @@ fn should_construct_events_from_deserialized_window_info() {
             window_id: 2,
             title: "Firefox".into(),
             app_class: "firefox".into(),
-        monitor_id: 0,
+        monitor_id: 1,
         }
     );
 
