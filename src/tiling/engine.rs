@@ -105,11 +105,22 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
         self.is_tiling = true;
 
-        // Collect tileable window IDs for this workspace
+        // Collect tileable window IDs for this workspace (stack screen only)
+        let stack_monitor = self.stack_screen_index as u32;
         let window_ids: Vec<u64> = self
             .desktops
             .get(&workspace_id)
-            .map(|d| d.stack_windows.clone())
+            .map(|d| {
+                d.stack_windows
+                    .iter()
+                    .filter(|&&wid| {
+                        self.windows
+                            .get(&wid)
+                            .is_some_and(|w| w.monitor_id == stack_monitor)
+                    })
+                    .copied()
+                    .collect()
+            })
             .unwrap_or_default();
 
         let positions = stack_layout(&window_ids, screen);
@@ -148,7 +159,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 is_toplevel: is_tl,
             };
 
-            if is_tl && !is_fs && w.monitor_id == self.stack_screen_index as u32 {
+            if is_tl && !is_fs {
                 self.desktop(w.workspace_id).append_window(w.id);
             }
 
@@ -181,10 +192,12 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
         self.windows.insert(window_id, tracked);
 
-        if is_tl && !is_fs && monitor_id == self.stack_screen_index as u32 {
+        if is_tl && !is_fs {
             self.desktop(self.active_workspace)
                 .push_window(window_id);
-            self.tile_stack(self.active_workspace).await?;
+            if monitor_id == self.stack_screen_index as u32 {
+                self.tile_stack(self.active_workspace).await?;
+            }
         }
 
         Ok(())
@@ -334,6 +347,11 @@ impl<P: GnomeProxy> TilingEngine<P> {
     /// Returns the current menu state.
     pub fn menu_state(&self) -> MenuState {
         self.menu
+    }
+
+    /// Override the menu state directly (used by CLI commands to bypass the menu UI).
+    pub fn set_menu_state(&mut self, state: MenuState) {
+        self.menu = state;
     }
 
     /// Process a menu input, transitioning state and executing any resulting action.
@@ -497,15 +515,9 @@ impl<P: GnomeProxy> TilingEngine<P> {
             w.monitor_id = target_monitor;
         }
 
-        // If the stack screen is the source monitor, remove from stack and retile
-        if source_monitor == self.stack_screen_index as u32 {
-            self.desktop(workspace_id).remove_window(window_id);
-            self.tile_stack(workspace_id).await?;
-        }
-
-        // If the stack screen is the target monitor, add to stack and retile
-        if target_monitor == self.stack_screen_index as u32 {
-            self.desktop(workspace_id).push_window(window_id);
+        // Retile stack screen if either source or target is the stack screen
+        let stack_monitor = self.stack_screen_index as u32;
+        if source_monitor == stack_monitor || target_monitor == stack_monitor {
             self.tile_stack(workspace_id).await?;
         }
 

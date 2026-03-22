@@ -24,8 +24,10 @@ pub async fn run_daemon<P: GnomeProxy + 'static>(
     shutdown: Option<oneshot::Receiver<()>>,
     event_rx: Option<mpsc::UnboundedReceiver<Event>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    eprintln!("[tiler] starting daemon, stack_screen_index={stack_screen_index}");
     let mut engine = TilingEngine::new(proxy, stack_screen_index);
     engine.startup().await?;
+    eprintln!("[tiler] startup complete, listening on {}", socket_path.display());
 
     let _ = std::fs::remove_file(socket_path);
     let listener = UnixListener::bind(socket_path)?;
@@ -49,6 +51,25 @@ pub async fn run_daemon<P: GnomeProxy + 'static>(
                         Command::Menu => {
                             let _ = engine.handle_menu_input(MenuInput::ToggleMenu).await;
                             Response::Ok
+                        }
+                        Command::ApplyLayout { monitor, layout } => {
+                            let input = MenuInput::Digit(layout);
+                            // Ensure menu is in the right state for applying a layout
+                            engine.set_menu_state(crate::menu::state::MenuState::ZoomedIn(monitor));
+                            match engine.handle_menu_input(input).await {
+                                Ok(()) => Response::Ok,
+                                Err(e) => Response::Error(e.to_string()),
+                            }
+                        }
+                        Command::Windows => {
+                            match engine.proxy().list_windows().await {
+                                Ok(windows) => {
+                                    let json = serde_json::to_string_pretty(&windows)
+                                        .unwrap_or_else(|e| format!("serialize error: {e}"));
+                                    Response::Windows(json)
+                                }
+                                Err(e) => Response::Error(e.to_string()),
+                            }
                         }
                         Command::Status => Response::Ok,
                         Command::Shutdown => {
@@ -87,28 +108,46 @@ pub async fn run_daemon<P: GnomeProxy + 'static>(
 async fn dispatch_event<P: GnomeProxy>(engine: &mut TilingEngine<P>, event: Event) {
     match event {
         Event::WindowOpened { window_id, title, app_class, monitor_id } => {
-            let _ = engine.handle_window_opened(window_id, title, app_class, monitor_id).await;
+            eprintln!("[tiler] event: WindowOpened id={window_id} title={title:?} monitor={monitor_id}");
+            if let Err(e) = engine.handle_window_opened(window_id, title, app_class, monitor_id).await {
+                eprintln!("[tiler] error handling WindowOpened: {e}");
+            }
         }
         Event::WindowClosed { window_id } => {
-            let _ = engine.handle_window_closed(window_id).await;
+            eprintln!("[tiler] event: WindowClosed id={window_id}");
+            if let Err(e) = engine.handle_window_closed(window_id).await {
+                eprintln!("[tiler] error handling WindowClosed: {e}");
+            }
         }
         Event::WindowFocusChanged { window_id } => {
+            eprintln!("[tiler] event: FocusChanged id={window_id}");
             engine.handle_focus_changed(window_id);
         }
         Event::WorkspaceChanged { workspace_id } => {
-            let _ = engine.handle_workspace_changed(workspace_id).await;
+            eprintln!("[tiler] event: WorkspaceChanged ws={workspace_id}");
+            if let Err(e) = engine.handle_workspace_changed(workspace_id).await {
+                eprintln!("[tiler] error handling WorkspaceChanged: {e}");
+            }
         }
         Event::WindowFullscreenChanged { window_id, is_fullscreen } => {
-            let _ = engine.handle_fullscreen_changed(window_id, is_fullscreen).await;
+            eprintln!("[tiler] event: FullscreenChanged id={window_id} fs={is_fullscreen}");
+            if let Err(e) = engine.handle_fullscreen_changed(window_id, is_fullscreen).await {
+                eprintln!("[tiler] error handling FullscreenChanged: {e}");
+            }
         }
         Event::WindowGeometryChanged { window_id, x, y, width, height } => {
-            let _ = engine.handle_geometry_changed(window_id, x, y, width, height).await;
+            if let Err(e) = engine.handle_geometry_changed(window_id, x, y, width, height).await {
+                eprintln!("[tiler] error handling GeometryChanged: {e}");
+            }
         }
         Event::MenuKeyPressed { key, modifiers } => {
+            eprintln!("[tiler] event: MenuKeyPressed key={key:?} modifiers={modifiers:?}");
             if let Some(input) = crate::menu::key_parse::parse_menu_key(
                 &key, &modifiers, engine.menu_state()
             ) {
-                let _ = engine.handle_menu_input(input).await;
+                if let Err(e) = engine.handle_menu_input(input).await {
+                    eprintln!("[tiler] error handling MenuKeyPressed: {e}");
+                }
             }
         }
     }

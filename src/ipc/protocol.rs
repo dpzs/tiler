@@ -11,6 +11,8 @@ pub enum Command {
     Menu,
     Status,
     Shutdown,
+    ApplyLayout { monitor: u32, layout: u8 },
+    Windows,
 }
 
 /// Responses sent from the tiler daemon back to the extension.
@@ -18,6 +20,7 @@ pub enum Command {
 pub enum Response {
     Ok,
     Error(String),
+    Windows(String),
 }
 
 /// Encode a payload with a u32 big-endian length prefix.

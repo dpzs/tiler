@@ -4,7 +4,7 @@ use tiler::cli::{Cli, Commands};
 use tiler::daemon::run_daemon;
 use tiler::gnome::zbus_proxy::ZbusGnomeProxy;
 use tiler::ipc::client::send_command;
-use tiler::ipc::protocol::Command;
+use tiler::ipc::protocol::{Command, Response};
 
 fn socket_path() -> PathBuf {
     if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
@@ -34,9 +34,14 @@ async fn main() {
         }
         Commands::Menu => send_command(&sock, Command::Menu).await.map(Some),
         Commands::Status => send_command(&sock, Command::Status).await.map(Some),
+        Commands::Apply { monitor, layout } => {
+            send_command(&sock, Command::ApplyLayout { monitor: monitor - 1, layout }).await.map(Some)
+        }
+        Commands::Windows => send_command(&sock, Command::Windows).await.map(Some),
     };
 
     match result {
+        Ok(Some(Response::Windows(json))) => println!("{json}"),
         Ok(Some(resp)) => println!("{:?}", resp),
         Ok(None) => {}
         Err(e) => {

@@ -377,7 +377,7 @@ async fn startup_only_stacks_windows_on_stack_screen() {
 }
 
 #[tokio::test]
-async fn startup_should_not_add_non_stack_monitor_windows_to_desktop() {
+async fn startup_tracks_all_toplevel_windows_in_desktop() {
     let monitors = two_monitors();
     let windows = vec![
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
@@ -388,8 +388,12 @@ async fn startup_should_not_add_non_stack_monitor_windows_to_desktop() {
     let mut engine = TilingEngine::new(proxy, 0);
     engine.startup().await.unwrap();
 
-    // Only window 1 should be in the desktop stack
+    // Both windows should be in the desktop stack (all toplevel windows are tracked)
     let desktop = engine.desktop_mut(0);
-    assert_eq!(desktop.stack_windows, vec![1], "non-stack-monitor windows should not be in desktop stack");
+    assert_eq!(desktop.stack_windows, vec![1, 2], "all toplevel windows should be in desktop stack");
+
+    // But only window 1 (on stack screen 0) should have been tiled
+    let calls = engine.proxy().move_resize_calls();
+    assert_eq!(calls.len(), 1, "only stack-screen window should be tiled at startup");
 }
 

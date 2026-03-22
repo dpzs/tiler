@@ -1,7 +1,12 @@
+import GLib from 'gi://GLib';
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import Shell from 'gi://Shell';
 import { TilerDBusService } from './dbus.js';
 import { MenuOverlay } from './menu.js';
+
+// Max ms to wait for first-frame before emitting WindowOpened anyway.
+// Handles headless mode (no GPU paint) and slow-to-render windows.
+const FIRST_FRAME_TIMEOUT_MS = 1000;
 
 export default class TilerExtension extends Extension {
     enable() {
@@ -79,6 +84,9 @@ export default class TilerExtension extends Extension {
             if (!actor) return;
 
             const emitAndConnect = () => {
+                const pending = this._pendingFirstFrame.get(windowId);
+                if (pending?.timeoutId)
+                    GLib.source_remove(pending.timeoutId);
                 this._pendingFirstFrame.delete(windowId);
                 this._dbusService.emitWindowOpened(windowId, title, appClass, win.get_monitor());
 
@@ -125,7 +133,16 @@ export default class TilerExtension extends Extension {
                     actor.disconnect(firstFrameId);
                     emitAndConnect();
                 });
-                this._pendingFirstFrame.set(windowId, { actor, id: firstFrameId });
+                // Fallback: if first-frame never fires (headless mode, GPU stall),
+                // emit after timeout so the daemon still tracks the window.
+                const timeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, FIRST_FRAME_TIMEOUT_MS, () => {
+                    if (this._pendingFirstFrame.has(windowId)) {
+                        try { actor.disconnect(firstFrameId); } catch (_) {}
+                        emitAndConnect();
+                    }
+                    return GLib.SOURCE_REMOVE;
+                });
+                this._pendingFirstFrame.set(windowId, { actor, id: firstFrameId, timeoutId });
             }
         } catch (e) {
             log(`[tiler] _onWindowCreated failed: ${e.message}`);
@@ -160,10 +177,11 @@ export default class TilerExtension extends Extension {
             this._signalIds = [];
         }
 
-        // Disconnect pending first-frame signals
+        // Disconnect pending first-frame signals and their timeout fallbacks
         if (this._pendingFirstFrame) {
-            for (const [, { actor, id }] of this._pendingFirstFrame) {
+            for (const [, { actor, id, timeoutId }] of this._pendingFirstFrame) {
                 try {
+                    if (timeoutId) GLib.source_remove(timeoutId);
                     actor.disconnect(id);
                 } catch (e) {
                     // Actor may already be destroyed

@@ -102,20 +102,31 @@ impl ZbusGnomeProxy {
                 proxy.receive_window_geometry_changed(),
                 proxy.receive_menu_key_pressed(),
             ) {
-                Ok(streams) => streams,
-                Err(_) => return,
+                Ok(streams) => {
+                    eprintln!("[tiler] D-Bus signal subscriptions established");
+                    streams
+                }
+                Err(e) => {
+                    eprintln!("[tiler] FATAL: failed to subscribe to D-Bus signals: {e}");
+                    return;
+                }
             };
 
             loop {
                 tokio::select! {
                     Some(signal) = window_opened.next() => {
-                        if let Ok(args) = signal.args() {
-                            let _ = tx.send(Event::WindowOpened {
-                                window_id: *args.window_id(),
-                                title: args.title().to_string(),
-                                app_class: args.app_class().to_string(),
-                                monitor_id: *args.monitor_id(),
-                            });
+                        match signal.args() {
+                            Ok(args) => {
+                                let _ = tx.send(Event::WindowOpened {
+                                    window_id: *args.window_id(),
+                                    title: args.title().to_string(),
+                                    app_class: args.app_class().to_string(),
+                                    monitor_id: *args.monitor_id(),
+                                });
+                            }
+                            Err(e) => {
+                                eprintln!("[tiler] failed to parse WindowOpened signal: {e}");
+                            }
                         }
                     }
                     Some(signal) = window_closed.next() => {

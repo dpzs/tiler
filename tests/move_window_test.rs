@@ -281,9 +281,9 @@ async fn should_remove_window_from_source_desktop_stack_after_move() {
 // INTEGRATION TESTS
 // ===========================================================================
 
-// 10. Move window from stack screen removes it from stack_windows
+// 10. Move window from stack screen: window stays tracked, only stack screen is retiled
 #[tokio::test]
-async fn should_remove_moved_window_from_stack_and_not_retile_it() {
+async fn should_not_retile_moved_window_on_stack_screen() {
     // Two windows on monitor 0 (stack screen)
     let windows = vec![
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
@@ -293,20 +293,29 @@ async fn should_remove_moved_window_from_stack_and_not_retile_it() {
     let mut engine = TilingEngine::new(proxy, 0);
     engine.startup().await.unwrap();
 
+    let calls_before = engine.proxy().move_resize_calls().len();
+
     // Move window 1 to monitor 1
     engine.handle_focus_changed(1);
     engine.move_window_to_monitor(1).await.unwrap();
 
-    // Window 1 should no longer be in stack_windows (moved off stack screen)
-    let desktop = engine.desktop_ref(0).unwrap();
+    // Window 1 remains in stack_windows (all toplevel windows are tracked),
+    // but only window 2 should be retiled on the stack screen
+    let calls = engine.proxy().move_resize_calls();
+    let post_move: Vec<_> = calls.iter().skip(calls_before).collect();
+
+    // Should have: 1 move call (window 1 to monitor 1) + 1 retile call (window 2 on stack screen)
+    assert_eq!(post_move.len(), 2, "expected move + retile, got {}", post_move.len());
+
+    // The retile should only position window 2 (on the stack screen), not window 1
+    let retile_window_ids: Vec<u64> = post_move.iter().filter(|c| c.1 == 0).map(|c| c.0).collect();
     assert!(
-        !desktop.stack_windows.contains(&1),
-        "window moved off stack screen should be removed from stack_windows"
+        retile_window_ids.contains(&2),
+        "window 2 should be retiled on stack screen"
     );
-    // Window 2 should remain
     assert!(
-        desktop.stack_windows.contains(&2),
-        "unmoved window should remain in stack_windows"
+        !retile_window_ids.contains(&1),
+        "window 1 should not be retiled on stack screen after moving away"
     );
 }
 
