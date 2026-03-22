@@ -326,11 +326,6 @@ export class MenuOverlay {
         if (this._keyCallback)
             this._keyCallback(keyName, modString);
 
-        if (keyName === 'Escape') {
-            this.hide();
-            return Clutter.EVENT_STOP;
-        }
-
         return Clutter.EVENT_STOP;
     }
 }
