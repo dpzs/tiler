@@ -1,4 +1,5 @@
 use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo, WindowInfo};
+use tiler::model::LayoutPreset;
 use tiler::tiling::engine::TilingEngine;
 
 fn two_monitors() -> Vec<MonitorInfo> {
@@ -268,4 +269,88 @@ async fn fullscreen_off_adds_back_to_stack_and_retiles() {
     let calls = engine.proxy().move_resize_calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].0, 1);
+}
+
+// --- is_tiling guard ---
+
+#[tokio::test]
+async fn is_tiling_is_false_after_startup() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // After startup completes, is_tiling should be false
+    assert!(!engine.is_tiling(), "is_tiling should be false after startup completes");
+}
+
+#[tokio::test]
+async fn is_tiling_is_false_after_tile_stack_completes() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap(); // startup calls tile_stack internally
+
+    // After tile_stack has completed (via startup), is_tiling should be false
+    assert!(!engine.is_tiling(), "is_tiling should be false after tile_stack completes");
+}
+
+#[tokio::test]
+async fn geometry_changed_during_tiling_is_suppressed() {
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 1, workspace_id: 0 },
+        WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 0 },
+    ];
+    let proxy = make_proxy(monitors, windows);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Set up enforcement + layout on monitor 1 so snap-back would normally fire
+    engine.desktop_mut(0).set_enforcement(1, true);
+    engine.desktop_mut(0).set_layout(1, LayoutPreset::SideBySide);
+
+    let calls_before = engine.proxy().move_resize_calls().len();
+
+    // Simulate being mid-tiling: set the guard
+    engine.set_tiling(true);
+
+    // Geometry change while tiling — should be suppressed (no snap-back)
+    engine
+        .handle_geometry_changed(1, 100, 100, 800, 600)
+        .await
+        .unwrap();
+
+    let calls_during = engine.proxy().move_resize_calls().len();
+    assert_eq!(
+        calls_during - calls_before,
+        0,
+        "no snap-back should occur while is_tiling is true"
+    );
+
+    // Clear the guard
+    engine.set_tiling(false);
+
+    // Now the same geometry change should trigger a snap-back
+    engine
+        .handle_geometry_changed(1, 100, 100, 800, 600)
+        .await
+        .unwrap();
+
+    let calls_after = engine.proxy().move_resize_calls().len();
+    assert_eq!(
+        calls_after - calls_during,
+        1,
+        "snap-back should occur when is_tiling is false and enforcement is active"
+    );
 }

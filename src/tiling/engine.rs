@@ -32,6 +32,7 @@ pub struct TilingEngine<P: GnomeProxy> {
     active_workspace: u32,
     focused_window_id: Option<u64>,
     menu: MenuState,
+    is_tiling: bool,
 }
 
 impl<P: GnomeProxy> TilingEngine<P> {
@@ -49,6 +50,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             active_workspace: 0,
             focused_window_id: None,
             menu: MenuState::Closed,
+            is_tiling: false,
         }
     }
 
@@ -60,6 +62,16 @@ impl<P: GnomeProxy> TilingEngine<P> {
     /// Returns a mutable reference to the underlying compositor proxy.
     pub fn proxy_mut(&mut self) -> &mut P {
         &mut self.proxy
+    }
+
+    /// Returns `true` while the engine is actively repositioning windows.
+    pub fn is_tiling(&self) -> bool {
+        self.is_tiling
+    }
+
+    /// Set the tiling guard. While `true`, geometry-change events are suppressed.
+    pub fn set_tiling(&mut self, value: bool) {
+        self.is_tiling = value;
     }
 
     fn desktop(&mut self, ws: u32) -> &mut VirtualDesktop {
@@ -91,6 +103,8 @@ impl<P: GnomeProxy> TilingEngine<P> {
             None => return Ok(()),
         };
 
+        self.is_tiling = true;
+
         // Collect tileable window IDs for this workspace
         let window_ids: Vec<u64> = self
             .desktops
@@ -106,6 +120,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 .await?;
         }
 
+        self.is_tiling = false;
         Ok(())
     }
 
@@ -239,6 +254,10 @@ impl<P: GnomeProxy> TilingEngine<P> {
         width: i32,
         height: i32,
     ) -> ProxyResult<()> {
+        if self.is_tiling {
+            return Ok(());
+        }
+
         // If window is not tracked, nothing to do
         let (workspace_id, monitor_id) = match self.windows.get(&window_id) {
             Some(w) => (w.workspace_id, w.monitor_id),
@@ -405,6 +424,8 @@ impl<P: GnomeProxy> TilingEngine<P> {
             None => return Ok(()),
         };
 
+        self.is_tiling = true;
+
         let window_ids: Vec<u64> = desktop
             .stack_windows
             .iter()
@@ -429,6 +450,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 .await?;
         }
 
+        self.is_tiling = false;
         Ok(())
     }
 
