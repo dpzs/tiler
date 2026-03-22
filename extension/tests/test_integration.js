@@ -163,5 +163,37 @@ export default function tests() {
       assert.ok(!dbus.includes('./menu.js'), 'dbus.js must not import menu.js');
       assert.ok(!menu.includes('./dbus.js'), 'menu.js must not import dbus.js');
     }),
+
+    // Lane 3 integration: U5 first-frame deferral wired through signal chain
+    test('integration: extension.js defers WindowOpened via first-frame but still emits signal', () => {
+      const ext = readFile('extension.js');
+      assert.ok(ext.includes('first-frame'), 'extension.js must use first-frame signal');
+      assert.ok(ext.includes('emitWindowOpened'), 'extension.js must still call emitWindowOpened');
+      assert.ok(ext.includes('get_compositor_private'), 'extension.js must get compositor actor');
+    }),
+
+    // Lane 3 integration: B3 Escape key flows through daemon, not handled locally
+    test('integration: menu key handler forwards all keys without local Escape handling', () => {
+      const menu = readFile('menu.js');
+      const start = menu.indexOf('_onKeyPressEvent');
+      const stopIdx = menu.indexOf('return Clutter.EVENT_STOP', start);
+      const end = menu.indexOf('}', stopIdx) + 1;
+      const handler = menu.substring(start, end);
+      assert.ok(handler.includes('_keyCallback'), 'key handler must forward via callback');
+      assert.ok(!handler.includes('this.hide()'), 'key handler must not call hide() locally');
+    }),
+
+    // Lane 3 integration: B4 overlay spans all monitors
+    test('integration: menu overlay uses multi-monitor bounding box', () => {
+      const menu = readFile('menu.js');
+      const defIdx = menu.indexOf('_buildOverlay() {');
+      const bodyEnd = menu.indexOf('grab_key_focus', defIdx);
+      const buildBody = menu.substring(defIdx, bodyEnd);
+      assert.ok(!buildBody.includes('primaryMonitor'), '_buildOverlay must not use primaryMonitor');
+      assert.ok(
+        buildBody.includes('layoutManager.monitors'),
+        '_buildOverlay must iterate all monitors'
+      );
+    }),
   ];
 }

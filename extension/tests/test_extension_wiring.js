@@ -152,5 +152,38 @@ export default function tests() {
         'Must monitor window geometry changes'
       );
     }),
+
+    // First-frame deferral (U5 race-condition fix)
+    test('extension.js defers WindowOpened via first-frame signal', () => {
+      const src = getSrc();
+      assert.ok(
+        src.includes('first-frame'),
+        'Must defer WindowOpened emission until first-frame signal fires'
+      );
+    }),
+
+    test('extension.js gets compositor actor via get_compositor_private', () => {
+      const src = getSrc();
+      assert.ok(
+        src.includes('get_compositor_private'),
+        'Must obtain compositor actor via win.get_compositor_private()'
+      );
+    }),
+
+    test('extension.js disconnects first-frame handler after firing', () => {
+      const src = getSrc();
+      assert.ok(
+        src.includes("connect('first-frame'") && src.includes('.disconnect('),
+        'Must connect to first-frame and disconnect the handler after it fires'
+      );
+    }),
+
+    test('extension.js emits immediately if actor already mapped', () => {
+      const src = getSrc();
+      assert.ok(
+        src.includes('is_mapped'),
+        'Must check is_mapped() and emit immediately if actor is already mapped'
+      );
+    }),
   ];
 }

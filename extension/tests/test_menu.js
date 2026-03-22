@@ -139,5 +139,54 @@ export default function tests() {
         'Must track whether menu is in overview or zoomed state'
       );
     }),
+
+    // B3: Escape key should not call hide() locally (daemon is single source of truth)
+    test('menu.js does not call hide() directly on Escape key', () => {
+      const src = getSrc();
+      const start = src.indexOf('_onKeyPressEvent');
+      const stopIdx = src.indexOf('return Clutter.EVENT_STOP', start);
+      const end = src.indexOf('}', stopIdx) + 1;
+      const keyHandler = src.substring(start, end);
+      assert.ok(
+        !keyHandler.includes('this.hide()'),
+        '_onKeyPressEvent must not call this.hide() — Escape is handled by the daemon'
+      );
+    }),
+
+    test('menu.js forwards all keys via callback without special Escape branch', () => {
+      const src = getSrc();
+      const start = src.indexOf('_onKeyPressEvent');
+      const stopIdx = src.indexOf('return Clutter.EVENT_STOP', start);
+      const end = src.indexOf('}', stopIdx) + 1;
+      const keyHandler = src.substring(start, end);
+      assert.ok(
+        !keyHandler.includes("=== 'Escape'"),
+        '_onKeyPressEvent must not have special Escape key comparison'
+      );
+    }),
+
+    // B4: Menu overlay must cover all monitors, not just the primary
+    test('menu.js sizes overlay from all monitors, not just primaryMonitor', () => {
+      const src = getSrc();
+      const defIdx = src.indexOf('_buildOverlay() {');
+      const bodyEnd = src.indexOf('grab_key_focus', defIdx);
+      const buildBody = src.substring(defIdx, bodyEnd);
+      assert.ok(
+        !buildBody.includes('primaryMonitor'),
+        '_buildOverlay must not use primaryMonitor — overlay must span all monitors'
+      );
+    }),
+
+    test('menu.js computes bounding box from layoutManager.monitors', () => {
+      const src = getSrc();
+      const defIdx = src.indexOf('_buildOverlay() {');
+      const bodyEnd = src.indexOf('grab_key_focus', defIdx);
+      const buildBody = src.substring(defIdx, bodyEnd);
+      assert.ok(
+        buildBody.includes('layoutManager.monitors') ||
+        buildBody.includes('Main.layoutManager.monitors'),
+        '_buildOverlay must iterate Main.layoutManager.monitors for multi-monitor bounding box'
+      );
+    }),
   ];
 }
