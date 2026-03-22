@@ -24,6 +24,9 @@ trait Tiler {
     fn get_active_workspace(&self) -> zbus::Result<u32>;
     fn get_window_type(&self, window_id: u64) -> zbus::Result<String>;
     fn is_fullscreen(&self, window_id: u64) -> zbus::Result<bool>;
+    fn show_menu(&self, monitors_json: &str) -> zbus::Result<()>;
+    fn show_menu_zoomed(&self, monitor_id: u32, layouts_json: &str) -> zbus::Result<()>;
+    fn hide_menu(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn window_opened(
@@ -208,5 +211,20 @@ impl GnomeProxy for ZbusGnomeProxy {
     async fn is_fullscreen(&self, window_id: u64) -> ProxyResult<bool> {
         let fs = self.proxy.is_fullscreen(window_id).await?;
         Ok(fs)
+    }
+
+    async fn show_menu(&mut self, monitors_json: &str) -> ProxyResult<()> {
+        self.proxy.show_menu(monitors_json).await?;
+        Ok(())
+    }
+
+    async fn show_menu_zoomed(&mut self, monitor_id: u32, layouts_json: &str) -> ProxyResult<()> {
+        self.proxy.show_menu_zoomed(monitor_id, layouts_json).await?;
+        Ok(())
+    }
+
+    async fn hide_menu(&mut self) -> ProxyResult<()> {
+        self.proxy.hide_menu().await?;
+        Ok(())
     }
 }

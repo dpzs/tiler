@@ -37,6 +37,9 @@ pub trait GnomeProxy: Send {
     fn get_active_workspace(&self) -> impl std::future::Future<Output = ProxyResult<u32>> + Send;
     fn get_window_type(&self, window_id: u64) -> impl std::future::Future<Output = ProxyResult<String>> + Send;
     fn is_fullscreen(&self, window_id: u64) -> impl std::future::Future<Output = ProxyResult<bool>> + Send;
+    fn show_menu(&mut self, monitors_json: &str) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
+    fn show_menu_zoomed(&mut self, monitor_id: u32, layouts_json: &str) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
+    fn hide_menu(&mut self) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
 }
 
 /// Mock implementation for unit testing without a real D-Bus connection.
@@ -47,6 +50,9 @@ pub struct MockGnomeProxy {
     window_types: HashMap<u64, String>,
     fullscreen_states: HashMap<u64, bool>,
     move_resize_log: Vec<(u64, i32, i32, i32, i32)>,
+    show_menu_log: Vec<String>,
+    show_menu_zoomed_log: Vec<(u32, String)>,
+    hide_menu_count: usize,
 }
 
 impl MockGnomeProxy {
@@ -58,6 +64,9 @@ impl MockGnomeProxy {
             window_types: HashMap::new(),
             fullscreen_states: HashMap::new(),
             move_resize_log: Vec::new(),
+            show_menu_log: Vec::new(),
+            show_menu_zoomed_log: Vec::new(),
+            hide_menu_count: 0,
         }
     }
 
@@ -88,6 +97,18 @@ impl MockGnomeProxy {
     /// Synchronous snapshot of configured windows (for test setup helpers).
     pub fn list_windows_snapshot(&self) -> Vec<WindowInfo> {
         self.windows.clone()
+    }
+
+    pub fn show_menu_calls(&self) -> &[String] {
+        &self.show_menu_log
+    }
+
+    pub fn show_menu_zoomed_calls(&self) -> &[(u32, String)] {
+        &self.show_menu_zoomed_log
+    }
+
+    pub fn hide_menu_count(&self) -> usize {
+        self.hide_menu_count
     }
 }
 
@@ -126,5 +147,20 @@ impl GnomeProxy for MockGnomeProxy {
 
     async fn is_fullscreen(&self, window_id: u64) -> ProxyResult<bool> {
         Ok(self.fullscreen_states.get(&window_id).copied().unwrap_or(false))
+    }
+
+    async fn show_menu(&mut self, monitors_json: &str) -> ProxyResult<()> {
+        self.show_menu_log.push(monitors_json.to_string());
+        Ok(())
+    }
+
+    async fn show_menu_zoomed(&mut self, monitor_id: u32, layouts_json: &str) -> ProxyResult<()> {
+        self.show_menu_zoomed_log.push((monitor_id, layouts_json.to_string()));
+        Ok(())
+    }
+
+    async fn hide_menu(&mut self) -> ProxyResult<()> {
+        self.hide_menu_count += 1;
+        Ok(())
     }
 }
