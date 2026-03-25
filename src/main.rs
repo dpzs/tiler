@@ -21,9 +21,13 @@ async fn main() {
 
     let result = match cli.command {
         Commands::Daemon => {
+            // Only the daemon process needs file logging
+            let _log_guard = tiler::logging::init_logging();
+
             let proxy = match ZbusGnomeProxy::connect().await {
                 Ok(p) => p,
                 Err(e) => {
+                    tracing::error!("failed to connect to GNOME Shell extension: {e}");
                     eprintln!("error: {e}");
                     std::process::exit(1);
                 }

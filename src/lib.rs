@@ -3,6 +3,7 @@ pub mod config;
 pub mod daemon;
 pub mod gnome;
 pub mod ipc;
+pub mod logging;
 pub mod menu;
 pub mod model;
 pub mod tiling;

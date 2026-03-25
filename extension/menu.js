@@ -81,14 +81,32 @@ export class MenuOverlay {
     _buildOverlay() {
         this._destroyOverlay();
 
-        // Full-screen dim backdrop
+        // Full-screen dim backdrop spanning all monitors
         this._overlay = new St.Widget({
             reactive: true,
-            layout_manager: new Clutter.BinLayout(),
             style: 'background-color: rgba(0, 0, 0, 0.55);',
         });
 
-        // Auto-sizing content panel, centered within the backdrop
+        const monitors = Main.layoutManager.monitors;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const m of monitors) {
+            minX = Math.min(minX, m.x);
+            minY = Math.min(minY, m.y);
+            maxX = Math.max(maxX, m.x + m.width);
+            maxY = Math.max(maxY, m.y + m.height);
+        }
+
+        // Center the panel on the primary monitor, not the multi-monitor midpoint
+        const primary = Main.layoutManager.primaryMonitor;
+        const centerContainer = new St.Widget({
+            x: primary.x - minX,
+            y: primary.y - minY,
+            width: primary.width,
+            height: primary.height,
+            layout_manager: new Clutter.BinLayout(),
+        });
+
+        // Auto-sizing content panel, centered within the primary monitor
         this._panel = new St.BoxLayout({
             vertical: true,
             x_align: Clutter.ActorAlign.CENTER,
@@ -101,7 +119,8 @@ export class MenuOverlay {
                 'padding: 32px 40px; ' +
                 'border: 1px solid rgba(255,255,255,0.08);',
         });
-        this._overlay.add_child(this._panel);
+        centerContainer.add_child(this._panel);
+        this._overlay.add_child(centerContainer);
 
         this._overlay.connect('key-press-event', (_actor, event) => {
             return this._onKeyPressEvent(_actor, event);
@@ -109,14 +128,6 @@ export class MenuOverlay {
 
         Main.layoutManager.addTopChrome(this._overlay);
 
-        const monitors = Main.layoutManager.monitors;
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const m of monitors) {
-            minX = Math.min(minX, m.x);
-            minY = Math.min(minY, m.y);
-            maxX = Math.max(maxX, m.x + m.width);
-            maxY = Math.max(maxY, m.y + m.height);
-        }
         this._overlay.set_size(maxX - minX, maxY - minY);
         this._overlay.set_position(minX, minY);
 

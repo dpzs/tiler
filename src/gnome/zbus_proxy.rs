@@ -1,5 +1,6 @@
 use futures_lite::StreamExt;
 use tokio::sync::mpsc;
+use tracing::{error, info};
 use zbus::proxy;
 
 use super::dbus_proxy::{GnomeProxy, MonitorInfo, ProxyResult, WindowInfo};
@@ -103,11 +104,11 @@ impl ZbusGnomeProxy {
                 proxy.receive_menu_key_pressed(),
             ) {
                 Ok(streams) => {
-                    eprintln!("[tiler] D-Bus signal subscriptions established");
+                    info!("D-Bus signal subscriptions established");
                     streams
                 }
                 Err(e) => {
-                    eprintln!("[tiler] FATAL: failed to subscribe to D-Bus signals: {e}");
+                    error!(error = %e, "FATAL: failed to subscribe to D-Bus signals");
                     return;
                 }
             };
@@ -125,7 +126,7 @@ impl ZbusGnomeProxy {
                                 });
                             }
                             Err(e) => {
-                                eprintln!("[tiler] failed to parse WindowOpened signal: {e}");
+                                error!(error = %e, "failed to parse WindowOpened signal");
                             }
                         }
                     }

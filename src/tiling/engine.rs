@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use tracing::{debug, info, warn};
+
 use crate::gnome::dbus_proxy::{GnomeProxy, MonitorInfo, ProxyResult};
 use crate::menu::state::{MenuAction, MenuInput, MenuState};
 use crate::model::{LayoutPreset, Rect, VirtualDesktop};
@@ -100,12 +102,14 @@ impl<P: GnomeProxy> TilingEngine<P> {
     async fn tile_stack(&mut self, workspace_id: u32) -> ProxyResult<()> {
         let screen = match self.stack_screen_rect() {
             Some(r) => r,
-            None => return Ok(()),
+            None => {
+                warn!(workspace_id, "tile_stack: no stack screen rect, skipping");
+                return Ok(());
+            }
         };
 
         self.is_tiling = true;
 
-        // Collect tileable window IDs for this workspace (stack screen only)
         let stack_monitor = self.stack_screen_index as u32;
         let window_ids: Vec<u64> = self
             .desktops
@@ -123,11 +127,20 @@ impl<P: GnomeProxy> TilingEngine<P> {
             })
             .unwrap_or_default();
 
+        debug!(
+            workspace_id,
+            stack_monitor,
+            window_count = window_ids.len(),
+            ?window_ids,
+            "tile_stack"
+        );
+
         let positions = stack_layout(&window_ids, screen);
 
-        for (id, rect) in positions {
+        for (id, rect) in &positions {
+            debug!(window_id = id, x = rect.x, y = rect.y, w = rect.width, h = rect.height, "  stack -> move_resize");
             self.proxy
-                .move_resize_window(id, rect.x, rect.y, rect.width, rect.height)
+                .move_resize_window(*id, rect.x, rect.y, rect.width, rect.height)
                 .await?;
         }
 
@@ -144,8 +157,18 @@ impl<P: GnomeProxy> TilingEngine<P> {
     pub async fn startup(&mut self) -> ProxyResult<()> {
         self.monitors = self.proxy.get_monitors().await?;
         self.active_workspace = self.proxy.get_active_workspace().await?;
+        info!(
+            monitors = self.monitors.len(),
+            active_workspace = self.active_workspace,
+            stack_screen = self.stack_screen_index,
+            "engine startup: loaded monitors"
+        );
+        for (i, m) in self.monitors.iter().enumerate() {
+            info!(index = i, id = m.id, x = m.x, y = m.y, w = m.width, h = m.height, "  monitor");
+        }
 
         let windows = self.proxy.list_windows().await?;
+        info!(count = windows.len(), "engine startup: enumerating existing windows");
         for w in windows {
             let wtype = self.proxy.get_window_type(w.id).await?;
             let is_fs = self.proxy.is_fullscreen(w.id).await?;
@@ -182,6 +205,12 @@ impl<P: GnomeProxy> TilingEngine<P> {
         let is_fs = self.proxy.is_fullscreen(window_id).await?;
         let is_tl = Self::is_toplevel_type(&wtype);
 
+        info!(
+            window_id, monitor_id, %wtype, is_tl, is_fs,
+            ws = self.active_workspace,
+            "window opened"
+        );
+
         let tracked = TrackedWindow {
             id: window_id,
             workspace_id: self.active_workspace,
@@ -193,11 +222,18 @@ impl<P: GnomeProxy> TilingEngine<P> {
         self.windows.insert(window_id, tracked);
 
         if is_tl && !is_fs {
-            self.desktop(self.active_workspace)
-                .push_window(window_id);
+            let ws = self.active_workspace;
+            self.desktop(ws).push_window(window_id);
             if monitor_id == self.stack_screen_index as u32 {
-                self.tile_stack(self.active_workspace).await?;
+                info!(window_id, "window on stack screen, retiling stack");
+                self.tile_stack(ws).await?;
             }
+            if let Some(preset) = self.desktops.get(&ws).and_then(|d| d.get_layout(monitor_id)) {
+                info!(window_id, monitor_id, ?preset, "monitor has layout preset, re-applying");
+                self.apply_layout_to_monitor(ws, monitor_id).await?;
+            }
+        } else {
+            debug!(window_id, is_tl, is_fs, "window not tileable, skipping");
         }
 
         Ok(())
@@ -207,14 +243,23 @@ impl<P: GnomeProxy> TilingEngine<P> {
     pub async fn handle_window_closed(&mut self, window_id: u64) -> ProxyResult<()> {
         let tracked = match self.windows.remove(&window_id) {
             Some(t) => t,
-            None => return Ok(()),
+            None => {
+                debug!(window_id, "window closed but not tracked, ignoring");
+                return Ok(());
+            }
         };
 
         let ws = tracked.workspace_id;
+        let monitor_id = tracked.monitor_id;
+        info!(window_id, ws, monitor_id, "window closed, removing from desktop");
         self.desktop(ws).remove_window(window_id);
 
         if tracked.is_toplevel && !tracked.is_fullscreen {
             self.tile_stack(ws).await?;
+            if let Some(preset) = self.desktops.get(&ws).and_then(|d| d.get_layout(monitor_id)) {
+                info!(monitor_id, ?preset, "monitor has layout preset, re-applying after close");
+                self.apply_layout_to_monitor(ws, monitor_id).await?;
+            }
         }
 
         Ok(())
@@ -222,8 +267,20 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
     /// Handle workspace change.
     pub async fn handle_workspace_changed(&mut self, workspace_id: u32) -> ProxyResult<()> {
+        info!(from = self.active_workspace, to = workspace_id, "workspace changed");
         self.active_workspace = workspace_id;
         self.tile_stack(workspace_id).await?;
+        let monitor_ids: Vec<u32> = self
+            .desktops
+            .get(&workspace_id)
+            .map(|d| d.layout_presets.keys().copied().collect())
+            .unwrap_or_default();
+        if !monitor_ids.is_empty() {
+            info!(?monitor_ids, "re-applying layout presets for workspace");
+        }
+        for mid in monitor_ids {
+            self.apply_layout_to_monitor(workspace_id, mid).await?;
+        }
         Ok(())
     }
 
@@ -272,13 +329,11 @@ impl<P: GnomeProxy> TilingEngine<P> {
             return Ok(());
         }
 
-        // If window is not tracked, nothing to do
         let (workspace_id, monitor_id) = match self.windows.get(&window_id) {
             Some(w) => (w.workspace_id, w.monitor_id),
             None => return Ok(()),
         };
 
-        // Check enforcement on this desktop/monitor
         let desktop = match self.desktops.get(&workspace_id) {
             Some(d) => d,
             None => return Ok(()),
@@ -336,7 +391,12 @@ impl<P: GnomeProxy> TilingEngine<P> {
             return Ok(());
         }
 
-        // Snap the window back to its expected position
+        debug!(
+            window_id, monitor_id,
+            actual_x = x, actual_y = y, actual_w = width, actual_h = height,
+            snap_x = expected.x, snap_y = expected.y, snap_w = expected.width, snap_h = expected.height,
+            "enforcement snap-back"
+        );
         self.proxy
             .move_resize_window(window_id, expected.x, expected.y, expected.width, expected.height)
             .await?;
@@ -358,6 +418,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
     pub async fn handle_menu_input(&mut self, input: MenuInput) -> ProxyResult<()> {
         let old_state = self.menu;
         let (new_state, action) = self.menu.transition(input);
+        debug!(?input, ?old_state, ?new_state, ?action, "menu transition");
         self.menu = new_state;
 
         // Closed -> Overview: show the menu overlay
@@ -440,7 +501,10 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 width: m.width,
                 height: m.height,
             },
-            None => return Ok(()),
+            None => {
+                warn!(monitor_id, "apply_layout: monitor not found");
+                return Ok(());
+            }
         };
 
         self.is_tiling = true;
@@ -456,6 +520,12 @@ impl<P: GnomeProxy> TilingEngine<P> {
             .copied()
             .collect();
 
+        info!(
+            workspace_id, monitor_id, ?preset,
+            window_count = window_ids.len(), ?window_ids,
+            "apply_layout_to_monitor"
+        );
+
         let positions = match preset {
             LayoutPreset::Fullscreen => apply_fullscreen(&window_ids, monitor_rect),
             LayoutPreset::SideBySide => apply_side_by_side(&window_ids, monitor_rect),
@@ -463,9 +533,10 @@ impl<P: GnomeProxy> TilingEngine<P> {
             LayoutPreset::Quadrants => apply_quadrants(&window_ids, monitor_rect),
         };
 
-        for (id, rect) in positions {
+        for (id, rect) in &positions {
+            debug!(window_id = id, x = rect.x, y = rect.y, w = rect.width, h = rect.height, "  layout -> move_resize");
             self.proxy
-                .move_resize_window(id, rect.x, rect.y, rect.width, rect.height)
+                .move_resize_window(*id, rect.x, rect.y, rect.width, rect.height)
                 .await?;
         }
 
