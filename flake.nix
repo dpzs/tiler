@@ -44,9 +44,35 @@
         packages = with pkgs; [
           clippy
           rustfmt
+          # E2E test dependencies (headless GNOME Shell)
+          gnome-shell
+          dbus
+          dconf
+          glib          # gdbus, gsettings
+          xterm
         ];
 
         CARGO_BUILD_TARGET = muslTarget;
+
+        # Merge GSettings schemas from gnome-shell 49 and desktop-schemas so
+        # headless gnome-shell finds all required keys (e.g. screen-brightness-up)
+        shellHook = let
+          gschemaDir = pkgs.runCommand "merged-gschemas" {} ''
+            mkdir -p $out/glib-2.0/schemas
+            for src in \
+              ${pkgs.gnome-shell}/share/gsettings-schemas/*/glib-2.0/schemas \
+              ${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/*/glib-2.0/schemas \
+              ${pkgs.mutter}/share/gsettings-schemas/*/glib-2.0/schemas; do
+              if [ -d "$src" ]; then
+                cp -n "$src"/*.xml "$out/glib-2.0/schemas/" 2>/dev/null || true
+                cp -n "$src"/*.override "$out/glib-2.0/schemas/" 2>/dev/null || true
+              fi
+            done
+            ${pkgs.glib.dev}/bin/glib-compile-schemas "$out/glib-2.0/schemas"
+          '';
+        in ''
+          export GSETTINGS_SCHEMA_DIR="${gschemaDir}/glib-2.0/schemas"
+        '';
       };
     };
 }

@@ -148,10 +148,14 @@ close_window() {
   sleep 2
 }
 
+DAEMON_PID=""
+SHELL_PID=""
+
 cleanup() {
-  kill "$DAEMON_PID" "$SHELL_PID" 2>/dev/null || true
+  [ -n "$DAEMON_PID" ] && kill "$DAEMON_PID" 2>/dev/null || true
+  [ -n "$SHELL_PID" ] && kill "$SHELL_PID" 2>/dev/null || true
   wait 2>/dev/null || true
-  rm -f /tmp/e2e-daemon.log
+  rm -f /tmp/e2e-daemon.log ~/tiler.log
 }
 trap cleanup EXIT
 
@@ -184,7 +188,7 @@ HAS_MON=$(echo "$INTROSPECT" | grep -A6 "WindowOpened" | grep -c "monitor_id" ||
 assert_eq "WindowOpened signal includes monitor_id" "1" "$HAS_MON"
 
 MON_JSON=$(gdbus call --session -d "$DBUS_NAME" -o "$DBUS_PATH" -m "$DBUS_IFACE.GetMonitors" 2>&1)
-MON_COUNT=$(echo "$MON_JSON" | grep -o '"Monitor-' | wc -l)
+MON_COUNT=$(echo "$MON_JSON" | grep -o '"id":' | wc -l)
 assert_eq "GetMonitors returns 3 virtual monitors" "3" "$MON_COUNT"
 
 WS=$(gdbus call --session -d "$DBUS_NAME" -o "$DBUS_PATH" -m "$DBUS_IFACE.GetActiveWorkspace" 2>&1)
@@ -194,6 +198,7 @@ assert_eq "GetActiveWorkspace returns 0" "(uint32 0,)" "$WS"
 printf "\n\033[1m── Daemon Startup & IPC (FR-001/002/003) ──\033[0m\n"
 # ═════════════════════════════════════════════════════════════════════════════
 
+rm -f ~/tiler.log
 "$TILER_BIN" daemon >/tmp/e2e-daemon.log 2>&1 &
 DAEMON_PID=$!
 sleep 1
@@ -210,8 +215,8 @@ printf "\n\033[1m── New Window Detection (FR-005) ──\033[0m\n"
 
 spawn_xterm  # id=1
 
-DAEMON_LOG=$(cat /tmp/e2e-daemon.log 2>/dev/null)
-OPEN1=$(echo "$DAEMON_LOG" | grep -c "event: WindowOpened" || true)
+DAEMON_LOG=$(cat ~/tiler.log 2>/dev/null)
+OPEN1=$(echo "$DAEMON_LOG" | grep -c "WindowOpened" || true)
 assert_eq "WindowOpened signal received" "1" "$OPEN1"
 
 W_AFTER1=$("$TILER_BIN" windows 2>&1)
@@ -256,8 +261,8 @@ printf "\n\033[1m── Stack Retile on Close (FR-009) ──\033[0m\n"
 
 close_window 3
 
-DAEMON_LOG2=$(cat /tmp/e2e-daemon.log 2>/dev/null)
-CLOSE_COUNT=$(echo "$DAEMON_LOG2" | grep -c "event: WindowClosed" || true)
+DAEMON_LOG2=$(cat ~/tiler.log 2>/dev/null)
+CLOSE_COUNT=$(echo "$DAEMON_LOG2" | grep -c "WindowClosed" || true)
 assert_ge "WindowClosed signal received" "1" "$CLOSE_COUNT"
 
 GEOM_W2c=$(get_window_geometry 2)
@@ -350,14 +355,14 @@ printf "\n\033[1m── Menu Command (FR-012) ──\033[0m\n"
 MENU=$("$TILER_BIN" menu 2>&1)
 assert_eq "Menu toggle command succeeds" "Ok" "$MENU"
 
-DAEMON_LOG3=$(cat /tmp/e2e-daemon.log 2>/dev/null)
-assert_not_contains "No errors in daemon log" "$DAEMON_LOG3" "error handling"
+DAEMON_LOG3=$(cat ~/tiler.log 2>/dev/null)
+assert_not_contains "No errors in daemon log" "$DAEMON_LOG3" "ERROR"
 
 # ═════════════════════════════════════════════════════════════════════════════
 printf "\n\033[1m── Daemon Log ──\033[0m\n"
 # ═════════════════════════════════════════════════════════════════════════════
 
-grep "^\[tiler\]" /tmp/e2e-daemon.log 2>/dev/null || true
+tail -20 ~/tiler.log 2>/dev/null || true
 
 echo "$PASS $FAIL" > "$RESULT_FILE"
 INNER_EOF

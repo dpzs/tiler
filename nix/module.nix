@@ -102,19 +102,20 @@ in
         in pkgs.writeShellScript "tiler-register-keybinding" ''
           current=$(${dconf} read "${dconfKey}" 2>/dev/null)
 
-          # Already registered — nothing to do
-          if [[ "$current" == *"${tilerPath}"* ]]; then
-            exit 0
+          # Ensure tiler path is in the custom-keybindings list
+          if [[ "$current" != *"${tilerPath}"* ]]; then
+            if [[ -z "$current" ]] || [[ "$current" == "@as []" ]]; then
+              ${dconf} write "${dconfKey}" "['${tilerPath}']"
+            else
+              ${dconf} write "${dconfKey}" "''${current%]}, '${tilerPath}']"
+            fi
           fi
 
-          # Empty or unset — create a new single-element array
-          if [[ -z "$current" ]] || [[ "$current" == "@as []" ]]; then
-            ${dconf} write "${dconfKey}" "['${tilerPath}']"
-            exit 0
-          fi
-
-          # Append to existing array
-          ${dconf} write "${dconfKey}" "''${current%]}, '${tilerPath}']"
+          # Always write keybinding properties — after a flake update the
+          # nix store path changes, so the command must be refreshed.
+          ${dconf} write "${tilerPath}name" "'Tiler Menu'"
+          ${dconf} write "${tilerPath}command" "'${cfg.package}/bin/tiler menu'"
+          ${dconf} write "${tilerPath}binding" "'${cfg.keybinding}'"
         '';
       };
     };

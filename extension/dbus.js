@@ -163,9 +163,41 @@ export class TilerDBusService {
 
         // Unmaximize first — move_resize_frame is silently ignored on
         // maximized windows in Mutter/GNOME.
-        if (win.get_maximized())
-            win.unmaximize(Meta.MaximizeFlags.BOTH);
+        // GNOME 49 replaced get_maximized() with is_maximized() and
+        // removed the MaximizeFlags parameter from unmaximize().
+        const isMaximized = typeof win.is_maximized === 'function'
+            ? win.is_maximized()
+            : (typeof win.get_maximized === 'function'
+                ? win.get_maximized()
+                : false);
+        if (isMaximized) {
+            if (win.unmaximize.length === 0)
+                win.unmaximize();           // GNOME 49+: no args
+            else
+                win.unmaximize(Meta.MaximizeFlags.BOTH);  // GNOME 45–48
+        }
 
+        // Workaround: mutter headless multi-monitor has a bug where
+        // move_resize_frame with height >= monitor height snaps the
+        // window to the wrong monitor. Determine the target monitor
+        // and ensure the window is placed there first.
+        const display = global.display;
+        const nMon = display.get_n_monitors();
+        for (let i = 0; i < nMon; i++) {
+            const geom = display.get_monitor_geometry(i);
+            if (x >= geom.x && x < geom.x + geom.width) {
+                if (win.get_monitor() !== i)
+                    win.move_to_monitor(i);
+                // Clamp to work area to avoid triggering maximize snap
+                const workArea = win.get_work_area_for_monitor(i);
+                const clampedY = Math.max(y, workArea.y);
+                const clampedH = Math.min(height, workArea.y + workArea.height - clampedY);
+                const clampedW = Math.min(width, workArea.width);
+                win.move_resize_frame(false, x, clampedY, clampedW, clampedH);
+                return;
+            }
+        }
+        // Fallback if monitor not found
         win.move_resize_frame(false, x, y, width, height);
     }
 
