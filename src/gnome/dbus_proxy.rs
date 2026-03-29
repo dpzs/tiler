@@ -50,6 +50,8 @@ pub trait GnomeProxy: Send {
     fn show_menu_zoomed(&mut self, monitor_id: u32, layouts_json: &str) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
     /// Hide the menu overlay, returning to the idle state.
     fn hide_menu(&mut self) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
+    /// Raise a window to the top of the stacking order.
+    fn raise_window(&mut self, window_id: u64) -> impl std::future::Future<Output = ProxyResult<()>> + Send;
 }
 
 /// Mock implementation for unit testing without a real D-Bus connection.
@@ -171,6 +173,10 @@ impl GnomeProxy for MockGnomeProxy {
 
     async fn hide_menu(&mut self) -> ProxyResult<()> {
         self.hide_menu_count += 1;
+        Ok(())
+    }
+
+    async fn raise_window(&mut self, _window_id: u64) -> ProxyResult<()> {
         Ok(())
     }
 }

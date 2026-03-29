@@ -28,6 +28,7 @@ trait Tiler {
     fn show_menu(&self, monitors_json: &str) -> zbus::Result<()>;
     fn show_menu_zoomed(&self, monitor_id: u32, layouts_json: &str) -> zbus::Result<()>;
     fn hide_menu(&self) -> zbus::Result<()>;
+    fn raise_window(&self, window_id: u64) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn window_opened(
@@ -239,6 +240,11 @@ impl GnomeProxy for ZbusGnomeProxy {
 
     async fn hide_menu(&mut self) -> ProxyResult<()> {
         self.proxy.hide_menu().await?;
+        Ok(())
+    }
+
+    async fn raise_window(&mut self, window_id: u64) -> ProxyResult<()> {
+        self.proxy.raise_window(window_id).await?;
         Ok(())
     }
 }

@@ -18,6 +18,10 @@
       <arg name="height" type="i" direction="in"/>
     </method>
 
+    <method name="RaiseWindow">
+      <arg name="window_id" type="t" direction="in"/>
+    </method>
+
     <method name="GetMonitors">
       <arg name="monitors_json" type="s" direction="out"/>
     </method>

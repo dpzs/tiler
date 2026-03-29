@@ -1,6 +1,7 @@
 //! Tiling engine: coordinates window tracking, layout enforcement, and menu state.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use tracing::{debug, info, warn};
 
@@ -35,6 +36,10 @@ pub struct TilingEngine<P: GnomeProxy> {
     focused_window_id: Option<u64>,
     menu: MenuState,
     is_tiling: bool,
+    /// Timestamp of the last tiling batch completion. Geometry-change signals
+    /// arriving within a grace period after this are suppressed to avoid
+    /// snap-back from async Mutter events.
+    last_tiling_end: Option<Instant>,
 }
 
 impl<P: GnomeProxy> TilingEngine<P> {
@@ -53,6 +58,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             focused_window_id: None,
             menu: MenuState::Closed,
             is_tiling: false,
+            last_tiling_end: None,
         }
     }
 
@@ -74,6 +80,12 @@ impl<P: GnomeProxy> TilingEngine<P> {
     /// Set the tiling guard. While `true`, geometry-change events are suppressed.
     pub fn set_tiling(&mut self, value: bool) {
         self.is_tiling = value;
+    }
+
+    /// Clear the post-tiling grace period so geometry enforcement resumes
+    /// immediately. Useful in tests where there is no real async delay.
+    pub fn clear_tiling_grace(&mut self) {
+        self.last_tiling_end = None;
     }
 
     fn desktop(&mut self, ws: u32) -> &mut VirtualDesktop {
@@ -144,7 +156,13 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 .await?;
         }
 
+        // Raise stack windows so the first (newest) is on top
+        for (id, _) in positions.iter().rev() {
+            self.proxy.raise_window(*id).await?;
+        }
+
         self.is_tiling = false;
+        self.last_tiling_end = Some(Instant::now());
         Ok(())
     }
 
@@ -327,6 +345,15 @@ impl<P: GnomeProxy> TilingEngine<P> {
     ) -> ProxyResult<()> {
         if self.is_tiling {
             return Ok(());
+        }
+
+        // Grace period: suppress geometry-change signals that arrive shortly
+        // after a tiling batch completes — Mutter fires these asynchronously.
+        const TILING_GRACE: Duration = Duration::from_millis(500);
+        if let Some(end) = self.last_tiling_end {
+            if end.elapsed() < TILING_GRACE {
+                return Ok(());
+            }
         }
 
         let (workspace_id, monitor_id) = match self.windows.get(&window_id) {
@@ -533,6 +560,8 @@ impl<P: GnomeProxy> TilingEngine<P> {
             LayoutPreset::Quadrants => apply_quadrants(&window_ids, monitor_rect),
         };
 
+        // Move positioned windows first, then raise them in order so the
+        // first-in-layout window ends up on top.
         for (id, rect) in &positions {
             debug!(window_id = id, x = rect.x, y = rect.y, w = rect.width, h = rect.height, "  layout -> move_resize");
             self.proxy
@@ -540,7 +569,27 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 .await?;
         }
 
+        // Excess windows (not assigned a slot) get stacked behind the layout
+        // by moving them to fill the monitor — this prevents them from
+        // floating at stale positions and visually overlapping the layout.
+        let positioned_ids: Vec<u64> = positions.iter().map(|(id, _)| *id).collect();
+        for &wid in &window_ids {
+            if !positioned_ids.contains(&wid) {
+                debug!(window_id = wid, "  layout -> stash excess behind layout");
+                self.proxy
+                    .move_resize_window(wid, monitor_rect.x, monitor_rect.y, monitor_rect.width, monitor_rect.height)
+                    .await?;
+            }
+        }
+
+        // Raise positioned windows in reverse order so the first window in
+        // the layout ends up on top of the stacking order.
+        for (id, _) in positions.iter().rev() {
+            self.proxy.raise_window(*id).await?;
+        }
+
         self.is_tiling = false;
+        self.last_tiling_end = Some(Instant::now());
         Ok(())
     }
 
@@ -576,10 +625,11 @@ impl<P: GnomeProxy> TilingEngine<P> {
             None => return Ok(()),
         };
 
-        // Move the window to fill the target monitor
+        // Move the window to fill the target monitor and raise it
         self.proxy
             .move_resize_window(window_id, target_rect.0, target_rect.1, target_rect.2, target_rect.3)
             .await?;
+        self.proxy.raise_window(window_id).await?;
 
         // Update tracked window's monitor_id
         if let Some(w) = self.windows.get_mut(&window_id) {

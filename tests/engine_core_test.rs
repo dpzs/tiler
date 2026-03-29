@@ -338,8 +338,9 @@ async fn geometry_changed_during_tiling_is_suppressed() {
         "no snap-back should occur while is_tiling is true"
     );
 
-    // Clear the guard
+    // Clear the guard and the grace period
     engine.set_tiling(false);
+    engine.clear_tiling_grace();
 
     // Now the same geometry change should trigger a snap-back
     engine

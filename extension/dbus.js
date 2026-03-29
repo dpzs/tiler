@@ -41,6 +41,9 @@ const INTERFACE_XML = `
       <arg name="layouts_json" type="s" direction="in"/>
     </method>
     <method name="HideMenu"/>
+    <method name="RaiseWindow">
+      <arg name="window_id" type="t" direction="in"/>
+    </method>
     <signal name="WindowOpened">
       <arg name="window_id" type="t"/>
       <arg name="title" type="s"/>
@@ -199,6 +202,13 @@ export class TilerDBusService {
         }
         // Fallback if monitor not found
         win.move_resize_frame(false, x, y, width, height);
+    }
+
+    RaiseWindow(windowId) {
+        const win = this._findWindowById(windowId);
+        if (!win)
+            return;
+        win.raise();
     }
 
     GetMonitors() {

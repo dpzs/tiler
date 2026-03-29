@@ -6,7 +6,10 @@
       "Bash(python3:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(dpkg -l)",
+      "Bash(rm -f /data/source/dplSite900/tiler/test-screenshots/*.png)",
+      "Bash(nix develop:*)"
     ]
   }
 }

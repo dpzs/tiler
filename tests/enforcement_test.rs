@@ -114,6 +114,9 @@ async fn should_snap_back_when_enforcement_enabled_and_layout_set() {
     engine.desktop_mut(0).set_enforcement(1, true);
     engine.desktop_mut(0).set_layout(1, LayoutPreset::SideBySide);
 
+    // Clear the post-tiling grace period from startup so enforcement is active
+    engine.clear_tiling_grace();
+
     let calls_before = engine.proxy().move_resize_calls().len();
 
     // Compute expected positions using the same preset function the engine should use

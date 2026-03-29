@@ -104,6 +104,7 @@ async fn should_snap_back_after_menu_applies_layout_and_enables_enforcement() {
     let expected_rect = expected[0].1;
 
     // Manually "move" window 1 to a wrong position — should trigger snap-back
+    engine.clear_tiling_grace();
     engine
         .handle_geometry_changed(1, 100, 200, 500, 400)
         .await
@@ -165,6 +166,7 @@ async fn should_enforce_layout_through_window_open_close_and_geometry_change() {
     );
 
     // Now change geometry of window 1 — enforcement should snap it back
+    engine.clear_tiling_grace();
     let calls_before_snap = engine.proxy().move_resize_calls().len();
     engine
         .handle_geometry_changed(1, 0, 0, 100, 100)
@@ -193,6 +195,7 @@ async fn should_enforce_layout_through_window_open_close_and_geometry_change() {
     let expected_single = apply_side_by_side(&[1], mon1_rect);
     let expected_rect = expected_single[0].1;
 
+    engine.clear_tiling_grace();
     let calls_before_final = engine.proxy().move_resize_calls().len();
     engine
         .handle_geometry_changed(1, 999, 999, 10, 10)
@@ -354,6 +357,7 @@ async fn should_preserve_enforcement_across_workspace_switches() {
     engine.handle_workspace_changed(0).await.unwrap();
 
     // Enforcement should still be active — geometry change should snap back
+    engine.clear_tiling_grace();
     let calls_before_snap = engine.proxy().move_resize_calls().len();
     engine.handle_geometry_changed(1, 0, 0, 100, 100).await.unwrap();
     let calls_after_snap = engine.proxy().move_resize_calls().len();
