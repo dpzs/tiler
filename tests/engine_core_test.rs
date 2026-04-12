@@ -398,3 +398,53 @@ async fn startup_tracks_all_toplevel_windows_in_desktop() {
     assert_eq!(calls.len(), 1, "only stack-screen window should be tiled at startup");
 }
 
+#[tokio::test]
+async fn new_window_on_non_stack_monitor_moved_to_stack() {
+    let monitors = two_monitors();
+    let proxy = make_proxy(monitors, vec![]);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Open a toplevel window that GNOME placed on monitor 1 (non-stack)
+    engine.proxy_mut().set_window_type(10, "toplevel".into());
+    engine.handle_window_opened(10, "Term".into(), "terminal".into(), 1).await.unwrap();
+
+    let calls = engine.proxy().move_resize_calls();
+    // Should have: 1 move to stack screen + 1 retile = at least 1 call that targets monitor 0
+    assert!(!calls.is_empty(), "window should be moved to stack screen");
+    // The first call should move the window to the stack screen (monitor 0 geometry)
+    let (wid, x, _y, _w, _h) = calls[0];
+    assert_eq!(wid, 10);
+    assert_eq!(x, 0, "window should be moved to stack screen x=0");
+
+    // The move_resize call should target stack screen geometry (x=0)
+    // First call: move window to stack screen, subsequent calls: retile
+    let first = &calls[0];
+    assert_eq!(first.0, 10);
+    assert_eq!(first.1, 0, "window should be moved to stack screen x=0");
+}
+
+#[tokio::test]
+async fn new_window_on_non_stack_monitor_with_preset_stays() {
+    let monitors = two_monitors();
+    let proxy = make_proxy(monitors, vec![]);
+
+    let mut engine = TilingEngine::new(proxy, 0);
+    engine.startup().await.unwrap();
+
+    // Set a layout preset on monitor 1
+    engine.desktop_mut(0).set_layout(1, LayoutPreset::SideBySide);
+
+    // Open a toplevel window on monitor 1 (which has a preset)
+    engine.proxy_mut().set_window_type(10, "toplevel".into());
+    engine.handle_window_opened(10, "Term".into(), "terminal".into(), 1).await.unwrap();
+
+    // The layout should re-apply on monitor 1 (x=1920), NOT move to stack screen (x=0)
+    let calls = engine.proxy().move_resize_calls();
+    assert!(!calls.is_empty(), "layout should be applied");
+    let (wid, x, _y, _w, _h) = calls[0];
+    assert_eq!(wid, 10);
+    assert_eq!(x, 1920, "window should stay on monitor 1 with its preset layout");
+}
+
