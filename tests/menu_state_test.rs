@@ -140,10 +140,10 @@ fn test_zoomed_ignores_invalid_digit() {
 }
 
 #[test]
-fn test_zoomed_ignores_toggle() {
+fn test_zoomed_toggle_closes() {
     let (next, action) = MenuState::ZoomedIn(0).transition(MenuInput::ToggleMenu);
-    assert_eq!(next, MenuState::ZoomedIn(0));
-    assert_eq!(action, None);
+    assert_eq!(next, MenuState::Closed);
+    assert_eq!(action, Some(MenuAction::Dismiss));
 }
 
 // ===========================================================================
@@ -155,4 +155,123 @@ fn test_overview_toggle_closes() {
     let (next, action) = MenuState::Overview.transition(MenuInput::ToggleMenu);
     assert_eq!(next, MenuState::Closed);
     assert_eq!(action, Some(MenuAction::Dismiss));
+}
+
+// ===========================================================================
+// ZoomedIn -> Closed (ToggleMenu = dismiss)
+// ===========================================================================
+
+#[test]
+fn test_zoomed_toggle_closes_and_dismisses() {
+    let (next, action) = MenuState::ZoomedIn(2).transition(MenuInput::ToggleMenu);
+    assert_eq!(next, MenuState::Closed);
+    assert_eq!(action, Some(MenuAction::Dismiss));
+}
+
+// ===========================================================================
+// Edge cases: all invalid digits stay in ZoomedIn
+// ===========================================================================
+
+#[test]
+fn test_zoomed_ignores_digits_5_through_8() {
+    for digit in 5..=8 {
+        let (next, action) = MenuState::ZoomedIn(0).transition(MenuInput::Digit(digit));
+        assert_eq!(
+            next,
+            MenuState::ZoomedIn(0),
+            "digit {digit} should not change state"
+        );
+        assert_eq!(action, None, "digit {digit} should produce no action");
+    }
+}
+
+// ===========================================================================
+// Edge cases: PressN/ShiftN are no-ops in ZoomedIn
+// ===========================================================================
+
+#[test]
+fn test_zoomed_ignores_press_n() {
+    let (next, action) = MenuState::ZoomedIn(0).transition(MenuInput::PressN(1));
+    assert_eq!(next, MenuState::ZoomedIn(0));
+    assert_eq!(action, None);
+}
+
+#[test]
+fn test_zoomed_ignores_shift_n() {
+    let (next, action) = MenuState::ZoomedIn(0).transition(MenuInput::ShiftN(1));
+    assert_eq!(next, MenuState::ZoomedIn(0));
+    assert_eq!(action, None);
+}
+
+// ===========================================================================
+// Closed state ignores all inputs
+// ===========================================================================
+
+#[test]
+fn test_closed_ignores_press_n() {
+    let (next, action) = MenuState::Closed.transition(MenuInput::PressN(0));
+    assert_eq!(next, MenuState::Closed);
+    assert_eq!(action, None);
+}
+
+#[test]
+fn test_closed_ignores_shift_n() {
+    let (next, action) = MenuState::Closed.transition(MenuInput::ShiftN(0));
+    assert_eq!(next, MenuState::Closed);
+    assert_eq!(action, None);
+}
+
+// ===========================================================================
+// State machine is deterministic: same input from same state always yields same result
+// ===========================================================================
+
+#[test]
+fn test_transition_is_deterministic() {
+    let inputs = [
+        MenuInput::ToggleMenu,
+        MenuInput::Escape,
+        MenuInput::PressN(0),
+        MenuInput::ShiftN(0),
+        MenuInput::Digit(1),
+        MenuInput::Digit(9),
+        MenuInput::Digit(0),
+    ];
+    let states = [
+        MenuState::Closed,
+        MenuState::Overview,
+        MenuState::ZoomedIn(0),
+        MenuState::ZoomedIn(5),
+    ];
+
+    for state in &states {
+        for input in &inputs {
+            let result1 = state.transition(*input);
+            let result2 = state.transition(*input);
+            assert_eq!(
+                result1, result2,
+                "transition should be deterministic for {state:?} + {input:?}"
+            );
+        }
+    }
+}
+
+// ===========================================================================
+// All transitions from non-Closed states eventually reach Closed
+// (no infinite cycles within the state machine)
+// ===========================================================================
+
+#[test]
+fn test_zoomed_all_valid_digits_close() {
+    for digit in [0, 1, 2, 3, 4, 9] {
+        let (next, action) = MenuState::ZoomedIn(0).transition(MenuInput::Digit(digit));
+        assert_eq!(
+            next,
+            MenuState::Closed,
+            "digit {digit} from ZoomedIn should transition to Closed"
+        );
+        assert!(
+            action.is_some(),
+            "digit {digit} from ZoomedIn should produce an action"
+        );
+    }
 }

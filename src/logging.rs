@@ -4,16 +4,25 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 /// Initialize file-based logging to ~/tiler.log.
 ///
-/// Returns a guard that must be held for the lifetime of the daemon —
+/// Returns a guard that must be held for the lifetime of the daemon --
 /// dropping it flushes and closes the log file.
-pub fn init_logging() -> WorkerGuard {
+///
+/// # Errors
+///
+/// Returns an error if the log file cannot be opened or created.
+pub fn init_logging() -> Result<WorkerGuard, std::io::Error> {
     let log_path = dirs_log_path();
 
     let file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(&log_path)
-        .expect("failed to open log file");
+        .map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("failed to open log file {}: {e}", log_path.display()),
+            )
+        })?;
 
     let (non_blocking, guard) = tracing_appender::non_blocking(file);
 
@@ -28,7 +37,7 @@ pub fn init_logging() -> WorkerGuard {
         .with_thread_ids(false)
         .init();
 
-    guard
+    Ok(guard)
 }
 
 fn dirs_log_path() -> PathBuf {

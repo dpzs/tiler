@@ -1,6 +1,7 @@
 use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo, WindowInfo};
 use tiler::model::LayoutPreset;
 use tiler::tiling::engine::TilingEngine;
+use tiler::config::StackScreenPosition;
 
 fn two_monitors() -> Vec<MonitorInfo> {
     vec![
@@ -31,7 +32,7 @@ async fn startup_tiles_existing_windows_on_stack_screen() {
     let proxy = make_proxy(monitors, windows);
 
     // stack_screen_index=0 means monitor 0 is the stack screen
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Should have called move_resize for both windows on the stack screen
@@ -54,7 +55,7 @@ async fn startup_skips_fullscreen_windows() {
     let mut proxy = make_proxy(monitors, windows);
     proxy.set_fullscreen(2, true);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Only window 1 should be tiled
@@ -73,7 +74,7 @@ async fn startup_skips_dialog_windows() {
     let mut proxy = make_proxy(monitors, windows);
     proxy.set_window_type(2, "dialog".into());
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     let calls = engine.proxy().move_resize_calls();
@@ -88,7 +89,7 @@ async fn new_window_added_to_stack_and_retiled() {
     let monitors = two_monitors();
     let proxy = make_proxy(monitors, vec![]);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open a new normal window
@@ -108,7 +109,7 @@ async fn new_window_retiles_all_stack_windows() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // 1 call for startup (window 1)
@@ -128,7 +129,7 @@ async fn new_fullscreen_window_ignored() {
     let monitors = two_monitors();
     let proxy = make_proxy(monitors, vec![]);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Mark window as fullscreen before opening
@@ -150,7 +151,7 @@ async fn close_window_retiles_remaining() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // 2 calls from startup
@@ -170,7 +171,7 @@ async fn close_unknown_window_is_noop() {
     let monitors = two_monitors();
     let proxy = make_proxy(monitors, vec![]);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     engine.handle_window_closed(999).await.unwrap();
@@ -189,7 +190,7 @@ async fn windows_on_different_workspaces_isolated() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Only workspace 0 is active by default, so only window 1 should be tiled
@@ -209,7 +210,7 @@ async fn workspace_change_retiles_new_workspace() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // 1 call for window 1 on ws 0
@@ -235,7 +236,7 @@ async fn fullscreen_on_removes_from_stack_and_retiles() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     assert_eq!(engine.proxy().move_resize_calls().len(), 2);
 
@@ -257,7 +258,7 @@ async fn fullscreen_off_adds_back_to_stack_and_retiles() {
     let mut proxy = make_proxy(monitors, windows);
     proxy.set_fullscreen(1, true);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     // Fullscreen window not tiled on startup
     assert_eq!(engine.proxy().move_resize_calls().len(), 0);
@@ -281,7 +282,7 @@ async fn is_tiling_is_false_after_startup() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // After startup completes, is_tiling should be false
@@ -297,7 +298,7 @@ async fn is_tiling_is_false_after_tile_stack_completes() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap(); // startup calls tile_stack internally
 
     // After tile_stack has completed (via startup), is_tiling should be false
@@ -313,7 +314,7 @@ async fn geometry_changed_during_tiling_is_suppressed() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Set up enforcement + layout on monitor 0 so snap-back would normally fire
@@ -369,7 +370,7 @@ async fn startup_only_stacks_windows_on_stack_screen() {
     let proxy = make_proxy(monitors, windows);
 
     // stack_screen_index=0 means only monitor 0 windows should be tiled
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Only windows 1 and 2 (on monitor 0) should have been moved
@@ -386,7 +387,7 @@ async fn startup_tracks_all_toplevel_windows_in_desktop() {
     ];
     let proxy = make_proxy(monitors, windows);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Both windows should be in the desktop stack (all toplevel windows are tracked)
@@ -403,7 +404,7 @@ async fn new_window_on_non_stack_monitor_moved_to_stack() {
     let monitors = two_monitors();
     let proxy = make_proxy(monitors, vec![]);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open a toplevel window that GNOME placed on monitor 1 (non-stack)
@@ -430,7 +431,7 @@ async fn new_window_on_non_stack_monitor_with_preset_stays() {
     let monitors = two_monitors();
     let proxy = make_proxy(monitors, vec![]);
 
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Set a layout preset on monitor 1
@@ -446,5 +447,21 @@ async fn new_window_on_non_stack_monitor_with_preset_stays() {
     let (wid, x, _y, _w, _h) = calls[0];
     assert_eq!(wid, 10);
     assert_eq!(x, 1920, "window should stay on monitor 1 with its preset layout");
+}
+
+#[tokio::test]
+async fn startup_should_fail_with_no_monitors() {
+    let proxy = make_proxy(vec![], vec![]);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
+    let result = engine.startup().await;
+    assert!(
+        result.is_err(),
+        "startup with no monitors should return an error"
+    );
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(
+        err_msg.contains("no monitors"),
+        "error should mention no monitors, got: {err_msg}"
+    );
 }
 

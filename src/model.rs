@@ -52,6 +52,7 @@ pub struct VirtualDesktop {
 }
 
 impl VirtualDesktop {
+    #[must_use]
     pub fn new(id: u32) -> Self {
         VirtualDesktop {
             id,
@@ -65,6 +66,7 @@ impl VirtualDesktop {
         self.layout_presets.insert(monitor_id, preset);
     }
 
+    #[must_use]
     pub fn get_layout(&self, monitor_id: u32) -> Option<LayoutPreset> {
         self.layout_presets.get(&monitor_id).copied()
     }
@@ -73,6 +75,7 @@ impl VirtualDesktop {
         self.enforcement_modes.insert(monitor_id, enforced);
     }
 
+    #[must_use]
     pub fn is_enforced(&self, monitor_id: u32) -> bool {
         self.enforcement_modes.get(&monitor_id).copied().unwrap_or(false)
     }
@@ -91,5 +94,12 @@ impl VirtualDesktop {
 
     pub fn remove_window(&mut self, window_id: u64) {
         self.stack_windows.retain(|&id| id != window_id);
+    }
+
+    /// Remove window IDs from `stack_windows` that are not present in
+    /// `live_ids`. This prevents unbounded growth from orphaned entries
+    /// left behind by races or prior sessions.
+    pub fn prune_orphaned_windows(&mut self, live_ids: &std::collections::HashSet<u64>) {
+        self.stack_windows.retain(|id| live_ids.contains(id));
     }
 }

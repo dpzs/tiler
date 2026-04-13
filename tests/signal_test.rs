@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tiler::config::StackScreenPosition;
 use tiler::daemon::run_daemon;
 use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo};
 use tiler::ipc::client::send_command;
@@ -41,7 +42,7 @@ async fn should_exit_on_external_shutdown_signal() {
 
     let proxy = make_proxy();
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, Some(rx), None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, Some(rx), None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -81,7 +82,7 @@ async fn should_serve_ipc_normally_with_pending_shutdown_channel() {
 
     let proxy = make_proxy();
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, Some(rx), None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, Some(rx), None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -121,7 +122,7 @@ async fn should_exit_when_shutdown_sender_is_dropped() {
 
     let proxy = make_proxy();
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, Some(rx), None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, Some(rx), None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 

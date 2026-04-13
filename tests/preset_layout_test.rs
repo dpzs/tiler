@@ -332,3 +332,86 @@ fn test_quadrants_odd_dimensions_no_gap() {
         "left column height must equal monitor height"
     );
 }
+
+// ===========================================================================
+// Coverage invariant for all presets with offset monitors
+// ===========================================================================
+
+#[test]
+fn test_all_presets_cover_monitor_with_offset() {
+    let m = Rect { x: 1920, y: 100, width: 2560, height: 1440 };
+
+    // Fullscreen
+    let result = apply_fullscreen(&[1], m);
+    assert_eq!(result[0].1, m, "fullscreen covers entire monitor");
+
+    // SideBySide
+    let result = apply_side_by_side(&[1, 2], m);
+    assert_eq!(
+        result[0].1.width + result[1].1.width,
+        m.width,
+        "side-by-side covers full width"
+    );
+    assert_eq!(result[0].1.x, m.x);
+    assert_eq!(result[1].1.x, m.x + result[0].1.width);
+
+    // TopBottom
+    let result = apply_top_bottom(&[1, 2], m);
+    assert_eq!(
+        result[0].1.height + result[1].1.height,
+        m.height,
+        "top-bottom covers full height"
+    );
+    assert_eq!(result[0].1.y, m.y);
+    assert_eq!(result[1].1.y, m.y + result[0].1.height);
+
+    // Quadrants
+    let result = apply_quadrants(&[1, 2, 3, 4], m);
+    let total_area: i64 = result
+        .iter()
+        .map(|(_, r)| r.width as i64 * r.height as i64)
+        .sum();
+    assert_eq!(
+        total_area,
+        m.width as i64 * m.height as i64,
+        "quadrants cover full area"
+    );
+}
+
+// ===========================================================================
+// Presets with width=1 and height=1 (minimum valid dimensions)
+// ===========================================================================
+
+#[test]
+fn test_side_by_side_width_1() {
+    let m = Rect { x: 0, y: 0, width: 1, height: 100 };
+    let result = apply_side_by_side(&[1, 2], m);
+    // 1/2 = 0, so left window gets width 0 and right gets width 1
+    // This is a degenerate case but should not panic
+    assert_eq!(result.len(), 2);
+    assert_eq!(
+        result[0].1.width + result[1].1.width,
+        1,
+        "total width must equal monitor width"
+    );
+}
+
+#[test]
+fn test_top_bottom_height_1() {
+    let m = Rect { x: 0, y: 0, width: 100, height: 1 };
+    let result = apply_top_bottom(&[1, 2], m);
+    assert_eq!(result.len(), 2);
+    assert_eq!(
+        result[0].1.height + result[1].1.height,
+        1,
+        "total height must equal monitor height"
+    );
+}
+
+#[test]
+fn test_quadrants_width_1_height_1() {
+    let m = Rect { x: 0, y: 0, width: 1, height: 1 };
+    let result = apply_quadrants(&[1, 2, 3, 4], m);
+    assert_eq!(result.len(), 4);
+    // Degenerate but should not panic
+}

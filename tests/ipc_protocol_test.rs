@@ -340,6 +340,167 @@ async fn should_roundtrip_response_error_through_framed_message() {
     }
 }
 
+// --- decode_frame rejects oversized frames ---
+
+#[tokio::test]
+async fn should_reject_frame_exceeding_max_size() {
+    // Arrange — length header claims 16 MiB + 1 byte (exceeds MAX_FRAME_SIZE)
+    let oversized_len: u32 = 16 * 1024 * 1024 + 1;
+    let data = oversized_len.to_be_bytes();
+    let mut reader = &data[..];
+
+    // Act
+    let result = decode_frame(&mut reader).await;
+
+    // Assert
+    assert!(result.is_err(), "should reject frames exceeding MAX_FRAME_SIZE");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("frame too large"),
+        "error should mention 'frame too large', got: {err_msg}"
+    );
+}
+
+#[tokio::test]
+async fn should_accept_frame_at_exact_max_size_boundary() {
+    // Arrange — length header claims exactly 16 MiB (at the boundary)
+    // We can't actually allocate 16 MiB of test data and feed it through,
+    // but we can verify the length check passes by checking a frame just
+    // under the limit with a truncated payload (the error will be about
+    // truncation, not about size).
+    let max_len: u32 = 16 * 1024 * 1024;
+    let mut data = Vec::new();
+    data.extend_from_slice(&max_len.to_be_bytes());
+    // Only provide 4 bytes of payload instead of 16 MiB — should fail
+    // with a truncation error, NOT a "frame too large" error.
+    data.extend_from_slice(b"abcd");
+    let mut reader = &data[..];
+
+    let result = decode_frame(&mut reader).await;
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("frame too large"),
+        "exactly-at-limit frame should not be rejected as 'too large', got: {err_msg}"
+    );
+}
+
+// --- read_message rejects malformed JSON ---
+
+#[tokio::test]
+async fn should_reject_invalid_json_in_message() {
+    // Arrange — valid frame containing invalid JSON
+    let bad_json = b"not valid json{{{";
+    let frame = encode_frame(bad_json).expect("encode");
+    let mut reader = &frame[..];
+
+    // Act
+    let result: Result<Command, _> = read_message(&mut reader).await;
+
+    // Assert
+    assert!(result.is_err(), "should reject invalid JSON payload");
+}
+
+#[tokio::test]
+async fn should_reject_wrong_type_json_in_message() {
+    // Arrange — valid JSON but wrong type (number instead of Command enum)
+    let wrong_type = b"42";
+    let frame = encode_frame(wrong_type).expect("encode");
+    let mut reader = &frame[..];
+
+    // Act
+    let result: Result<Command, _> = read_message(&mut reader).await;
+
+    // Assert
+    assert!(result.is_err(), "should reject JSON that does not match expected type");
+}
+
+// --- Malformed message does not corrupt the stream ---
+
+#[tokio::test]
+async fn malformed_json_frame_does_not_corrupt_subsequent_messages() {
+    // Arrange: send a valid frame with invalid JSON, then a valid command.
+    // The first read_message should fail, but the second should succeed
+    // because each frame is length-prefixed and self-contained.
+    let (mut writer, mut reader) = tokio::io::duplex(4096);
+
+    // Frame 1: valid length-prefix but garbage JSON payload
+    let bad_json = b"{{not json at all}}";
+    let bad_frame = encode_frame(bad_json).expect("encode bad frame");
+    tokio::io::AsyncWriteExt::write_all(&mut writer, &bad_frame)
+        .await
+        .expect("write bad frame");
+
+    // Frame 2: valid Command::Status message
+    send_message(&mut writer, &Command::Status)
+        .await
+        .expect("send valid command");
+    drop(writer);
+
+    // Act: first read should fail (bad JSON), second should succeed
+    let first: Result<Command, _> = read_message(&mut reader).await;
+    assert!(first.is_err(), "first message should fail to parse as Command");
+
+    let second: Command = read_message(&mut reader)
+        .await
+        .expect("second message should parse successfully after a bad frame");
+    assert_eq!(second, Command::Status);
+}
+
+#[tokio::test]
+async fn zero_length_frame_fails_json_parse_but_does_not_corrupt_stream() {
+    // A zero-length frame is a valid framing envelope containing an empty
+    // payload. Deserializing it as a Command should fail (empty JSON), but
+    // the next frame should read correctly.
+    let (mut writer, mut reader) = tokio::io::duplex(4096);
+
+    // Frame 1: zero-length
+    let zero_frame = encode_frame(b"").expect("encode empty frame");
+    tokio::io::AsyncWriteExt::write_all(&mut writer, &zero_frame)
+        .await
+        .expect("write zero frame");
+
+    // Frame 2: valid
+    send_message(&mut writer, &Command::Menu)
+        .await
+        .expect("send valid command");
+    drop(writer);
+
+    let first: Result<Command, _> = read_message(&mut reader).await;
+    assert!(first.is_err(), "empty payload should not deserialize as Command");
+
+    let second: Command = read_message(&mut reader)
+        .await
+        .expect("valid frame after zero-length frame should parse");
+    assert_eq!(second, Command::Menu);
+}
+
+// --- ApplyLayout command serialization ---
+
+#[test]
+fn should_roundtrip_apply_layout_command() {
+    let cmd = Command::ApplyLayout { monitor: 1, layout: 2 };
+    let json = serde_json::to_string(&cmd).expect("serialize");
+    let deserialized: Command = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(deserialized, cmd);
+}
+
+#[test]
+fn should_roundtrip_windows_command() {
+    let cmd = Command::Windows;
+    let json = serde_json::to_string(&cmd).expect("serialize");
+    let deserialized: Command = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(deserialized, cmd);
+}
+
+#[test]
+fn should_roundtrip_windows_response() {
+    let resp = Response::Windows("[]".into());
+    let json = serde_json::to_string(&resp).expect("serialize");
+    let deserialized: Response = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(deserialized, resp);
+}
+
 #[tokio::test]
 async fn should_roundtrip_multiple_messages_on_same_channel() {
     // Arrange

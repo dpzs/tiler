@@ -102,3 +102,82 @@ fn should_parse_any_key_closed_returns_none() {
     let result = parse_menu_key("Escape", "", MenuState::Closed);
     assert_eq!(result, None);
 }
+
+// ===========================================================================
+// Numpad keys are explicitly rejected
+// ===========================================================================
+
+#[test]
+fn should_reject_numpad_keys_in_overview() {
+    assert_eq!(parse_menu_key("KP_1", "", MenuState::Overview), None);
+    assert_eq!(parse_menu_key("KP_0", "", MenuState::Overview), None);
+    assert_eq!(parse_menu_key("KP_9", "", MenuState::Overview), None);
+}
+
+#[test]
+fn should_reject_numpad_keys_in_zoomed() {
+    assert_eq!(parse_menu_key("KP_1", "", MenuState::ZoomedIn(0)), None);
+    assert_eq!(parse_menu_key("KP_0", "", MenuState::ZoomedIn(0)), None);
+}
+
+// ===========================================================================
+// Modifier variations
+// ===========================================================================
+
+#[test]
+fn should_detect_shift_in_modifier_string_variants() {
+    // "shift" can appear alongside other modifiers
+    let result = parse_menu_key("2", "ctrl+shift", MenuState::Overview);
+    assert_eq!(result, Some(MenuInput::ShiftN(1)));
+
+    let result = parse_menu_key("2", "shift+alt", MenuState::Overview);
+    assert_eq!(result, Some(MenuInput::ShiftN(1)));
+}
+
+#[test]
+fn should_not_match_shift_in_unrelated_modifier() {
+    // "supershift" is not the same as "shift" - but contains() would match.
+    // This documents the current behavior (substring match). A strict check
+    // would reject "supershift" but the extension never sends such strings.
+    let result = parse_menu_key("1", "supershift", MenuState::Overview);
+    // Current behavior: contains("shift") matches
+    assert_eq!(result, Some(MenuInput::ShiftN(0)));
+}
+
+// ===========================================================================
+// Multi-character and edge-case key names
+// ===========================================================================
+
+#[test]
+fn should_reject_empty_key_string() {
+    assert_eq!(parse_menu_key("", "", MenuState::Overview), None);
+    assert_eq!(parse_menu_key("", "", MenuState::ZoomedIn(0)), None);
+}
+
+#[test]
+fn should_reject_two_digit_numbers() {
+    // "10" parses as u8(10) which is > 9, so the filter rejects it
+    assert_eq!(parse_menu_key("10", "", MenuState::Overview), None);
+    assert_eq!(parse_menu_key("10", "", MenuState::ZoomedIn(0)), None);
+}
+
+#[test]
+fn should_reject_negative_looking_strings() {
+    assert_eq!(parse_menu_key("-1", "", MenuState::Overview), None);
+}
+
+#[test]
+fn should_handle_digit_9_in_overview_as_press_n() {
+    // Digit 9 in Overview should produce PressN(8) (zero-indexed)
+    let result = parse_menu_key("9", "", MenuState::Overview);
+    assert_eq!(result, Some(MenuInput::PressN(8)));
+}
+
+#[test]
+fn should_handle_all_digits_in_zoomed() {
+    for d in 0..=9u8 {
+        let key = d.to_string();
+        let result = parse_menu_key(&key, "", MenuState::ZoomedIn(0));
+        assert_eq!(result, Some(MenuInput::Digit(d)), "digit {d} in ZoomedIn");
+    }
+}

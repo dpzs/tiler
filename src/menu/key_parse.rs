@@ -16,6 +16,7 @@ use super::state::{MenuInput, MenuState};
 ///   [`MenuInput::Digit`].
 /// - Numpad key names (e.g. `"KP_1"`) are intentionally rejected and return
 ///   `None`.
+#[must_use]
 pub fn parse_menu_key(key: &str, modifiers: &str, state: MenuState) -> Option<MenuInput> {
     match state {
         MenuState::Closed => None,

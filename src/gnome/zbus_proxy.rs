@@ -1,6 +1,6 @@
 use futures_lite::StreamExt;
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use zbus::proxy;
 
 use super::dbus_proxy::{GnomeProxy, MonitorInfo, ProxyResult, WindowInfo};
@@ -84,7 +84,19 @@ impl ZbusGnomeProxy {
 
     /// Spawn a background task that subscribes to all D-Bus signals and
     /// forwards them as `Event` variants through `tx`.
+    #[allow(clippy::too_many_lines)]
     pub fn spawn_signal_listener(&self, tx: mpsc::UnboundedSender<Event>) {
+        /// Try to send an event through the channel. Returns `false` if the
+        /// receiver has been dropped, signalling the listener to shut down.
+        #[inline]
+        fn try_forward(tx: &mpsc::UnboundedSender<Event>, event: Event) -> bool {
+            if tx.send(event).is_err() {
+                debug!("event channel closed, signal listener shutting down");
+                return false;
+            }
+            true
+        }
+
         let proxy = self.proxy.clone();
         tokio::spawn(async move {
             let (
@@ -119,12 +131,14 @@ impl ZbusGnomeProxy {
                     Some(signal) = window_opened.next() => {
                         match signal.args() {
                             Ok(args) => {
-                                let _ = tx.send(Event::WindowOpened {
+                                if !try_forward(&tx, Event::WindowOpened {
                                     window_id: *args.window_id(),
-                                    title: args.title().to_string(),
-                                    app_class: args.app_class().to_string(),
+                                    title: args.title().clone(),
+                                    app_class: args.app_class().clone(),
                                     monitor_id: *args.monitor_id(),
-                                });
+                                }) {
+                                    break;
+                                }
                             }
                             Err(e) => {
                                 error!(error = %e, "failed to parse WindowOpened signal");
@@ -132,56 +146,99 @@ impl ZbusGnomeProxy {
                         }
                     }
                     Some(signal) = window_closed.next() => {
-                        if let Ok(args) = signal.args() {
-                            let _ = tx.send(Event::WindowClosed {
-                                window_id: *args.window_id(),
-                            });
+                        match signal.args() {
+                            Ok(args) => {
+                                if !try_forward(&tx, Event::WindowClosed {
+                                    window_id: *args.window_id(),
+                                }) {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!(error = %e, "failed to parse WindowClosed signal");
+                            }
                         }
                     }
                     Some(signal) = focus_changed.next() => {
-                        if let Ok(args) = signal.args() {
-                            let _ = tx.send(Event::WindowFocusChanged {
-                                window_id: *args.window_id(),
-                            });
+                        match signal.args() {
+                            Ok(args) => {
+                                if !try_forward(&tx, Event::WindowFocusChanged {
+                                    window_id: *args.window_id(),
+                                }) {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!(error = %e, "failed to parse WindowFocusChanged signal");
+                            }
                         }
                     }
                     Some(signal) = workspace_changed.next() => {
-                        if let Ok(args) = signal.args() {
-                            let _ = tx.send(Event::WorkspaceChanged {
-                                workspace_id: *args.workspace_id(),
-                            });
+                        match signal.args() {
+                            Ok(args) => {
+                                if !try_forward(&tx, Event::WorkspaceChanged {
+                                    workspace_id: *args.workspace_id(),
+                                }) {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!(error = %e, "failed to parse WorkspaceChanged signal");
+                            }
                         }
                     }
                     Some(signal) = fullscreen_changed.next() => {
-                        if let Ok(args) = signal.args() {
-                            let _ = tx.send(Event::WindowFullscreenChanged {
-                                window_id: *args.window_id(),
-                                is_fullscreen: *args.is_fullscreen(),
-                            });
+                        match signal.args() {
+                            Ok(args) => {
+                                if !try_forward(&tx, Event::WindowFullscreenChanged {
+                                    window_id: *args.window_id(),
+                                    is_fullscreen: *args.is_fullscreen(),
+                                }) {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!(error = %e, "failed to parse WindowFullscreenChanged signal");
+                            }
                         }
                     }
                     Some(signal) = geometry_changed.next() => {
-                        if let Ok(args) = signal.args() {
-                            let _ = tx.send(Event::WindowGeometryChanged {
-                                window_id: *args.window_id(),
-                                x: *args.x(),
-                                y: *args.y(),
-                                width: *args.width(),
-                                height: *args.height(),
-                            });
+                        match signal.args() {
+                            Ok(args) => {
+                                if !try_forward(&tx, Event::WindowGeometryChanged {
+                                    window_id: *args.window_id(),
+                                    x: *args.x(),
+                                    y: *args.y(),
+                                    width: *args.width(),
+                                    height: *args.height(),
+                                }) {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!(error = %e, "failed to parse WindowGeometryChanged signal");
+                            }
                         }
                     }
                     Some(signal) = menu_key.next() => {
-                        if let Ok(args) = signal.args() {
-                            let _ = tx.send(Event::MenuKeyPressed {
-                                key: args.key().to_string(),
-                                modifiers: args.modifiers().to_string(),
-                            });
+                        match signal.args() {
+                            Ok(args) => {
+                                if !try_forward(&tx, Event::MenuKeyPressed {
+                                    key: args.key().clone(),
+                                    modifiers: args.modifiers().clone(),
+                                }) {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                error!(error = %e, "failed to parse MenuKeyPressed signal");
+                            }
                         }
                     }
                     else => break,
                 }
             }
+            info!("D-Bus signal listener exiting");
         });
     }
 }

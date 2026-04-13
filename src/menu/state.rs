@@ -1,16 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MenuState {
+    #[default]
     Closed,
     Overview,
     ZoomedIn(u32),
-}
-
-impl Default for MenuState {
-    fn default() -> Self {
-        MenuState::Closed
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,17 +28,15 @@ pub enum MenuAction {
 }
 
 impl MenuState {
+    #[must_use]
     pub fn transition(self, input: MenuInput) -> (MenuState, Option<MenuAction>) {
         match (self, input) {
             // Closed
             (MenuState::Closed, MenuInput::ToggleMenu) => (MenuState::Overview, None),
             (MenuState::Closed, _) => (MenuState::Closed, None),
 
-            // Overview
-            (MenuState::Overview, MenuInput::ToggleMenu) => {
-                (MenuState::Closed, Some(MenuAction::Dismiss))
-            }
-            (MenuState::Overview, MenuInput::Escape) => {
+            // Overview or ZoomedIn: dismiss on ToggleMenu or Escape
+            (MenuState::Overview | MenuState::ZoomedIn(_), MenuInput::ToggleMenu | MenuInput::Escape) => {
                 (MenuState::Closed, Some(MenuAction::Dismiss))
             }
             (MenuState::Overview, MenuInput::PressN(monitor)) => {
@@ -55,9 +48,6 @@ impl MenuState {
             (MenuState::Overview, _) => (MenuState::Overview, None),
 
             // ZoomedIn
-            (MenuState::ZoomedIn(_), MenuInput::Escape) => {
-                (MenuState::Closed, Some(MenuAction::Dismiss))
-            }
             (MenuState::ZoomedIn(monitor), MenuInput::Digit(d)) => match d {
                 1..=4 => (MenuState::Closed, Some(MenuAction::ApplyLayout(monitor, d))),
                 9 => (MenuState::Closed, Some(MenuAction::EnforceOn(monitor))),

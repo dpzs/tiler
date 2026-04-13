@@ -1,5 +1,6 @@
-use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo};
+use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo, WindowInfo};
 use tiler::tiling::engine::TilingEngine;
+use tiler::config::StackScreenPosition;
 
 // --- Helpers ---
 
@@ -24,7 +25,7 @@ fn make_proxy(monitors: Vec<MonitorInfo>) -> MockGnomeProxy {
 async fn should_return_none_focused_window_for_new_engine() {
     // Arrange
     let proxy = make_proxy(two_monitors());
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Assert
@@ -41,9 +42,15 @@ async fn should_return_none_focused_window_for_new_engine() {
 
 #[tokio::test]
 async fn should_set_focused_window_after_handle_focus_changed() {
-    // Arrange
-    let proxy = make_proxy(two_monitors());
-    let mut engine = TilingEngine::new(proxy, 0);
+    // Arrange — window must be tracked for focus to be accepted
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 42, title: "W".into(), app_class: "w".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let mut proxy = make_proxy(monitors);
+    proxy.set_windows(windows);
+    proxy.set_window_type(42, "toplevel".into());
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Act
@@ -63,9 +70,17 @@ async fn should_set_focused_window_after_handle_focus_changed() {
 
 #[tokio::test]
 async fn should_replace_focused_window_on_subsequent_focus_change() {
-    // Arrange
-    let proxy = make_proxy(two_monitors());
-    let mut engine = TilingEngine::new(proxy, 0);
+    // Arrange — both windows must be tracked
+    let monitors = two_monitors();
+    let windows = vec![
+        WindowInfo { id: 42, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
+        WindowInfo { id: 99, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
+    ];
+    let mut proxy = make_proxy(monitors);
+    proxy.set_windows(windows);
+    proxy.set_window_type(42, "toplevel".into());
+    proxy.set_window_type(99, "toplevel".into());
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Act
@@ -88,21 +103,23 @@ async fn should_replace_focused_window_on_subsequent_focus_change() {
 async fn should_accept_focus_change_for_untracked_window() {
     // Arrange — engine with no windows at all
     let proxy = make_proxy(two_monitors());
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
-    // Act — window 12345 is not tracked by the engine
+    // Act — window 12345 is not tracked by the engine. Focus signals can
+    // arrive before WindowOpened events due to D-Bus signal ordering, so
+    // the engine stores them unconditionally. move_window_to_monitor
+    // already guards against untracked windows.
     engine.handle_focus_changed(12345);
 
-    // Assert — should still store it; filtering happens elsewhere
+    // Assert — should store the ID even for untracked windows
     assert_eq!(
         engine.focused_window_id(),
         Some(12345),
-        "handle_focus_changed should work even for windows not in the tracked set"
+        "handle_focus_changed should accept untracked windows"
     );
 }
 
-use tiler::gnome::dbus_proxy::WindowInfo;
 use tiler::menu::state::{MenuInput, MenuState};
 
 // --- Helper for tests with windows ---
@@ -128,7 +145,7 @@ async fn should_move_focused_window_to_target_monitor() {
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy_with_windows(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Focus window 1
@@ -164,7 +181,7 @@ async fn should_noop_move_when_no_focused_window() {
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy_with_windows(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Do NOT set focus
@@ -189,7 +206,7 @@ async fn should_noop_move_when_target_monitor_not_found() {
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy_with_windows(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     engine.handle_focus_changed(1);
@@ -215,7 +232,7 @@ async fn should_move_window_via_shift_n_menu_input() {
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy_with_windows(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Focus window 1
@@ -257,7 +274,7 @@ async fn should_remove_window_from_source_desktop_stack_after_move() {
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy_with_windows(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Verify window 1 is in the stack before move
@@ -290,7 +307,7 @@ async fn should_not_retile_moved_window_on_stack_screen() {
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy_with_windows(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     let calls_before = engine.proxy().move_resize_calls().len();
@@ -326,7 +343,7 @@ async fn should_handle_close_of_moved_window() {
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy_with_windows(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Move window 1 to monitor 1
@@ -348,7 +365,7 @@ async fn should_retile_source_after_moving_one_of_multiple_windows() {
         WindowInfo { id: 3, title: "C".into(), app_class: "c".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy_with_windows(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, 0);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // After startup, 3 windows were tiled. Record the call count.

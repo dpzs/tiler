@@ -22,7 +22,7 @@ pub struct MonitorInfo {
 pub type ProxyResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// Trait abstracting the GNOME Shell extension D-Bus interface.
-/// Used directly for production (zbus proxy) and via MockGnomeProxy for tests.
+/// Used directly for production (zbus proxy) and via `MockGnomeProxy` for tests.
 pub trait GnomeProxy: Send {
     fn list_windows(&self) -> impl std::future::Future<Output = ProxyResult<Vec<WindowInfo>>> + Send;
     fn move_resize_window(
@@ -67,7 +67,14 @@ pub struct MockGnomeProxy {
     hide_menu_count: usize,
 }
 
+impl Default for MockGnomeProxy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MockGnomeProxy {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             windows: Vec::new(),
@@ -102,23 +109,28 @@ impl MockGnomeProxy {
         self.fullscreen_states.insert(window_id, fs);
     }
 
+    #[must_use]
     pub fn move_resize_calls(&self) -> &[(u64, i32, i32, i32, i32)] {
         &self.move_resize_log
     }
 
     /// Synchronous snapshot of configured windows (for test setup helpers).
+    #[must_use]
     pub fn list_windows_snapshot(&self) -> Vec<WindowInfo> {
         self.windows.clone()
     }
 
+    #[must_use]
     pub fn show_menu_calls(&self) -> &[String] {
         &self.show_menu_log
     }
 
+    #[must_use]
     pub fn show_menu_zoomed_calls(&self) -> &[(u32, String)] {
         &self.show_menu_zoomed_log
     }
 
+    #[must_use]
     pub fn hide_menu_count(&self) -> usize {
         self.hide_menu_count
     }

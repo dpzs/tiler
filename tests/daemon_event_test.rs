@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tiler::config::StackScreenPosition;
 use tiler::daemon::run_daemon;
 use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo};
 use tiler::gnome::event::Event;
@@ -42,7 +43,7 @@ async fn should_accept_event_receiver_parameter() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -78,7 +79,7 @@ async fn should_dispatch_window_closed_event() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -107,7 +108,7 @@ async fn should_dispatch_workspace_changed_event() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -140,7 +141,7 @@ async fn should_dispatch_menu_key_pressed_escape() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -173,7 +174,7 @@ async fn should_dispatch_menu_key_pressed_digit() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -206,7 +207,7 @@ async fn should_ignore_unknown_menu_key() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -245,7 +246,7 @@ async fn should_dispatch_escape_from_overview_state() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -284,7 +285,7 @@ async fn should_dispatch_digit_press_from_overview_state() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -323,7 +324,7 @@ async fn should_dispatch_full_menu_flow_open_zoom_apply() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -368,7 +369,7 @@ async fn should_work_without_event_receiver() {
     let proxy = make_proxy();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 

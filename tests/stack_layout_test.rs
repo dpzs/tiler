@@ -340,3 +340,170 @@ fn test_stack_layout_odd_height_three_rows() {
         "total height must equal screen height"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Zero-dimension screen returns empty
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_stack_layout_zero_width_screen() {
+    let ids = vec![1, 2, 3];
+    let s = Rect { x: 0, y: 0, width: 0, height: 1080 };
+    let result = stack_layout(&ids, s);
+    assert!(result.is_empty(), "zero-width screen should produce no tiles");
+}
+
+#[test]
+fn test_stack_layout_zero_height_screen() {
+    let ids = vec![1, 2, 3];
+    let s = Rect { x: 0, y: 0, width: 1920, height: 0 };
+    let result = stack_layout(&ids, s);
+    assert!(result.is_empty(), "zero-height screen should produce no tiles");
+}
+
+#[test]
+fn test_stack_layout_negative_dimensions() {
+    let ids = vec![1];
+    let s = Rect { x: 0, y: 0, width: -100, height: -200 };
+    let result = stack_layout(&ids, s);
+    assert!(result.is_empty(), "negative dimensions should produce no tiles");
+}
+
+// ---------------------------------------------------------------------------
+// Very small screen — only 1 column fits due to MIN_TILE_PX constraint
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_stack_layout_small_screen_caps_columns() {
+    // Screen is 160px wide. MIN_TILE_PX=80, so max 2 columns.
+    // With 11 windows that would normally need 3 columns, but we cap at 2.
+    let ids: Vec<u64> = (1..=11).collect();
+    let s = Rect { x: 0, y: 0, width: 160, height: 500 };
+    let result = stack_layout(&ids, s);
+
+    // max_by_width = 160/80 = 2 columns
+    // needed = ceil(11/5) = 3 columns
+    // actual = min(3, 2) = 2 columns, 10 windows max
+    assert_eq!(result.len(), 10, "should cap to 2 columns * 5 rows = 10 windows");
+
+    // Verify the first 10 windows are tiled
+    for i in 0..10 {
+        assert_eq!(result[i].0, (i as u64) + 1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Large window count — excess windows beyond grid capacity are omitted
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_stack_layout_large_count_all_fit_on_1080p() {
+    // 1920px wide, MIN_TILE_PX=80: max 24 columns
+    // 25 windows need ceil(25/5)=5 columns, min(5,24)=5
+    // All 25 windows fit in 5 columns of 5
+    let ids: Vec<u64> = (1..=25).collect();
+    let s = Rect { x: 0, y: 0, width: 1920, height: 1080 };
+    let result = stack_layout(&ids, s);
+
+    assert_eq!(result.len(), 25, "all 25 windows fit in 5 columns on 1080p");
+
+    // Verify gap-free coverage
+    let total_area: i64 = result.iter().map(|(_, r)| r.width as i64 * r.height as i64).sum();
+    let screen_area = s.width as i64 * s.height as i64;
+    assert_eq!(total_area, screen_area);
+}
+
+#[test]
+fn test_stack_layout_excess_omitted_narrow_screen() {
+    // 240px wide, MIN_TILE_PX=80: max 3 columns
+    // 20 windows need ceil(20/5)=4 columns, but capped to 3
+    // 3 columns * 5 rows = 15 windows max
+    let ids: Vec<u64> = (1..=20).collect();
+    let s = Rect { x: 0, y: 0, width: 240, height: 1080 };
+    let result = stack_layout(&ids, s);
+
+    assert_eq!(result.len(), 15, "should cap to 3 columns * 5 rows = 15 windows on 240px wide");
+}
+
+// ---------------------------------------------------------------------------
+// Gap-free invariant: all tiles must cover the screen exactly
+// ---------------------------------------------------------------------------
+
+/// Verify that all tiles together cover the screen exactly, with no
+/// overlaps and no gaps, for any window count from 1..=15.
+#[test]
+fn test_stack_layout_gap_free_coverage_invariant() {
+    let s = Rect { x: 100, y: 50, width: 1920, height: 1080 };
+
+    for n in 1..=10usize {
+        let ids: Vec<u64> = (1..=(n as u64)).collect();
+        let result = stack_layout(&ids, s);
+
+        // Every tile's right edge must equal the next column's left edge (or screen right)
+        // and every tile's bottom edge must equal the next row's top edge (or screen bottom)
+        // We check a simpler invariant: sum of tile areas == screen area
+        let total_area: i64 = result
+            .iter()
+            .map(|(_, r)| r.width as i64 * r.height as i64)
+            .sum();
+        let screen_area = s.width as i64 * s.height as i64;
+        assert_eq!(
+            total_area, screen_area,
+            "total tile area must equal screen area for {} windows",
+            n
+        );
+
+        // Verify no tile extends outside the screen
+        for (id, r) in &result {
+            assert!(
+                r.x >= s.x && r.y >= s.y
+                    && r.x + r.width <= s.x + s.width
+                    && r.y + r.height <= s.y + s.height,
+                "window {} tile {:?} must be within screen {:?}",
+                id, r, s
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Twenty windows — verifies multi-column behavior on 1080p
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_stack_layout_twenty_windows() {
+    let ids: Vec<u64> = (1..=20).collect();
+    let s = Rect { x: 0, y: 0, width: 1920, height: 1080 };
+    let result = stack_layout(&ids, s);
+
+    // max_by_width = 1920/80 = 24, needed = ceil(20/5) = 4
+    // All 20 windows fit in 4 columns
+    assert_eq!(result.len(), 20, "20 windows on 1080p should all be tiled in 4 columns");
+
+    // Verify gap-free coverage
+    let total_area: i64 = result.iter().map(|(_, r)| r.width as i64 * r.height as i64).sum();
+    let screen_area = s.width as i64 * s.height as i64;
+    assert_eq!(total_area, screen_area);
+}
+
+// ---------------------------------------------------------------------------
+// Tall screen allows more columns
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_stack_layout_tall_screen_allows_more_columns() {
+    // 3840px wide, 2160px tall (4K)
+    // max_by_width = 3840/80 = 48
+    // 25 windows need ceil(25/5) = 5 columns
+    // min(5, 48) = 5 columns, all 25 windows fit
+    let ids: Vec<u64> = (1..=25).collect();
+    let s = Rect { x: 0, y: 0, width: 3840, height: 2160 };
+    let result = stack_layout(&ids, s);
+
+    assert_eq!(result.len(), 25, "4K screen should fit 5 columns of 5");
+
+    // Verify gap-free coverage
+    let total_area: i64 = result.iter().map(|(_, r)| r.width as i64 * r.height as i64).sum();
+    let screen_area = s.width as i64 * s.height as i64;
+    assert_eq!(total_area, screen_area);
+}

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tiler::config::StackScreenPosition;
 use tiler::daemon::run_daemon;
 use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo, WindowInfo};
 use tiler::gnome::event::Event;
@@ -42,7 +43,7 @@ async fn should_handle_full_event_pipeline() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -100,7 +101,7 @@ async fn should_handle_window_open_close_lifecycle() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -153,7 +154,7 @@ async fn should_handle_mixed_ipc_and_events() {
     let (tx, rx) = mpsc::unbounded_channel();
 
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, Some(rx)).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, Some(rx)).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 

@@ -1,6 +1,7 @@
 use crate::model::Rect;
 
 /// Fullscreen: 1 slot, window fills the entire monitor.
+#[must_use]
 pub fn apply_fullscreen(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
     window_ids
         .iter()
@@ -9,7 +10,8 @@ pub fn apply_fullscreen(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
         .collect()
 }
 
-/// SideBySide: 2 slots, left and right halves.
+/// `SideBySide`: 2 slots, left and right halves.
+#[must_use]
 pub fn apply_side_by_side(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
     let half_w = monitor.width / 2;
     let slots = [
@@ -23,7 +25,8 @@ pub fn apply_side_by_side(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)>
         .collect()
 }
 
-/// TopBottom: 2 slots, top and bottom halves.
+/// `TopBottom`: 2 slots, top and bottom halves.
+#[must_use]
 pub fn apply_top_bottom(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
     let half_h = monitor.height / 2;
     let slots = [
@@ -38,6 +41,7 @@ pub fn apply_top_bottom(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
 }
 
 /// Quadrants: 4 slots in a 2x2 grid (top-left, top-right, bottom-left, bottom-right).
+#[must_use]
 pub fn apply_quadrants(window_ids: &[u64], monitor: Rect) -> Vec<(u64, Rect)> {
     let half_w = monitor.width / 2;
     let half_h = monitor.height / 2;

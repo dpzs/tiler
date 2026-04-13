@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use tracing::{debug, info, warn};
 
+use crate::config::StackScreenPosition;
 use crate::gnome::dbus_proxy::{GnomeProxy, MonitorInfo, ProxyResult};
 use crate::menu::state::{MenuAction, MenuInput, MenuState};
 use crate::model::{LayoutPreset, Rect, VirtualDesktop};
@@ -26,6 +27,7 @@ struct TrackedWindow {
 /// forwarded by the daemon.
 pub struct TilingEngine<P: GnomeProxy> {
     proxy: P,
+    stack_position: StackScreenPosition,
     stack_screen_index: usize,
     monitors: Vec<MonitorInfo>,
     windows: HashMap<u64, TrackedWindow>,
@@ -43,12 +45,14 @@ pub struct TilingEngine<P: GnomeProxy> {
 impl<P: GnomeProxy> TilingEngine<P> {
     /// Create a new engine. Call [`startup`](Self::startup) before dispatching events.
     ///
-    /// `stack_screen_index` is the index into the monitor list used as the
-    /// stack tiling screen.
-    pub fn new(proxy: P, stack_screen_index: usize) -> Self {
+    /// `stack_position` determines which monitor (by position) is used as the
+    /// stack tiling screen. The actual index is resolved during `startup()`
+    /// once monitors are loaded.
+    pub fn new(proxy: P, stack_position: StackScreenPosition) -> Self {
         Self {
             proxy,
-            stack_screen_index,
+            stack_position,
+            stack_screen_index: 0,
             monitors: Vec::new(),
             windows: HashMap::new(),
             desktops: HashMap::new(),
@@ -61,16 +65,19 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     /// Returns a reference to the underlying compositor proxy.
+    #[must_use]
     pub fn proxy(&self) -> &P {
         &self.proxy
     }
 
     /// Returns a mutable reference to the underlying compositor proxy.
+    #[must_use]
     pub fn proxy_mut(&mut self) -> &mut P {
         &mut self.proxy
     }
 
     /// Returns `true` while the engine is actively repositioning windows.
+    #[must_use]
     pub fn is_tiling(&self) -> bool {
         self.is_tiling
     }
@@ -100,6 +107,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     /// The stack screen's monitor ID.
+    #[allow(clippy::cast_possible_truncation)]
     fn stack_monitor_id(&self) -> u32 {
         self.stack_screen_index as u32
     }
@@ -162,17 +170,24 @@ impl<P: GnomeProxy> TilingEngine<P> {
         self.last_tiling_end = Some(Instant::now());
     }
 
+    /// Remove orphaned window IDs from the desktop's `stack_windows` that are
+    /// no longer present in the engine's tracked windows map.
+    fn prune_desktop(&mut self, workspace_id: u32) {
+        let live_ids: std::collections::HashSet<u64> = self.windows.keys().copied().collect();
+        if let Some(desktop) = self.desktops.get_mut(&workspace_id) {
+            desktop.prune_orphaned_windows(&live_ids);
+        }
+    }
+
     /// Tile all stack windows for a given workspace.
     async fn tile_stack(&mut self, workspace_id: u32) -> ProxyResult<()> {
-        let screen = match self.stack_screen_rect() {
-            Some(r) => r,
-            None => {
-                warn!(workspace_id, "tile_stack: no stack screen rect, skipping");
-                return Ok(());
-            }
+        let Some(screen) = self.stack_screen_rect() else {
+            warn!(workspace_id, "tile_stack: no stack screen rect, skipping");
+            return Ok(());
         };
 
         self.is_tiling = true;
+        self.prune_desktop(workspace_id);
 
         let window_ids = self.windows_on_monitor(workspace_id, self.stack_monitor_id());
 
@@ -192,6 +207,18 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 .await?;
         }
 
+        // Excess windows beyond the grid capacity are stashed at full screen
+        // size behind the tiled windows so they don't float at stale positions.
+        let positioned_ids: Vec<u64> = positions.iter().map(|(id, _)| *id).collect();
+        for &wid in &window_ids {
+            if !positioned_ids.contains(&wid) {
+                debug!(window_id = wid, "  stack -> stash excess behind layout");
+                self.proxy
+                    .move_resize_window(wid, screen.x, screen.y, screen.width, screen.height)
+                    .await?;
+            }
+        }
+
         // Raise stack windows so the first (newest) is on top
         for (id, _) in positions.iter().rev() {
             self.proxy.raise_window(*id).await?;
@@ -208,9 +235,8 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
     /// Move a window to the stack screen, update tracking, and retile.
     async fn move_to_stack(&mut self, window_id: u64, workspace_id: u32) -> ProxyResult<()> {
-        let rect = match self.stack_screen_rect() {
-            Some(r) => r,
-            None => return Ok(()),
+        let Some(rect) = self.stack_screen_rect() else {
+            return Ok(());
         };
         self.proxy
             .move_resize_window(window_id, rect.x, rect.y, rect.width, rect.height)
@@ -225,11 +251,23 @@ impl<P: GnomeProxy> TilingEngine<P> {
     /// Initialize the engine: load monitors, enumerate existing windows, tile.
     pub async fn startup(&mut self) -> ProxyResult<()> {
         self.monitors = self.proxy.get_monitors().await?;
+
+        if self.monitors.is_empty() {
+            return Err("no monitors detected — cannot initialize tiling engine".into());
+        }
+
+        // Resolve the stack screen index from the configured position.
+        self.stack_screen_index = self
+            .stack_position
+            .resolve_index(&self.monitors)
+            .ok_or("monitors list is non-empty but resolve_index returned None")?;
+
         self.active_workspace = self.proxy.get_active_workspace().await?;
         info!(
             monitors = self.monitors.len(),
             active_workspace = self.active_workspace,
             stack_screen = self.stack_screen_index,
+            stack_position = ?self.stack_position,
             "engine startup: loaded monitors"
         );
         for (i, m) in self.monitors.iter().enumerate() {
@@ -292,12 +330,14 @@ impl<P: GnomeProxy> TilingEngine<P> {
         let ws = self.active_workspace;
         self.desktop_mut(ws).push_window(window_id);
 
-        if monitor_id == self.stack_monitor_id() {
-            info!(window_id, "window on stack screen, retiling stack");
-            self.tile_stack(ws).await?;
-        } else if let Some(preset) = self.desktops.get(&ws).and_then(|d| d.get_layout(monitor_id)) {
+        if let Some(preset) = self.desktops.get(&ws).and_then(|d| d.get_layout(monitor_id)) {
+            // Monitor has a layout preset — re-apply it (works for both
+            // stack and non-stack monitors, so presets always take priority).
             info!(window_id, monitor_id, ?preset, "monitor has layout preset, re-applying");
             self.apply_layout_to_monitor(ws, monitor_id).await?;
+        } else if monitor_id == self.stack_monitor_id() {
+            info!(window_id, "window on stack screen, retiling stack");
+            self.tile_stack(ws).await?;
         } else {
             // Window opened on a non-stack monitor with no layout preset:
             // move it to the stack screen per the design requirement that
@@ -311,13 +351,16 @@ impl<P: GnomeProxy> TilingEngine<P> {
 
     /// Handle a window closing.
     pub async fn handle_window_closed(&mut self, window_id: u64) -> ProxyResult<()> {
-        let tracked = match self.windows.remove(&window_id) {
-            Some(t) => t,
-            None => {
-                debug!(window_id, "window closed but not tracked, ignoring");
-                return Ok(());
-            }
+        let Some(tracked) = self.windows.remove(&window_id) else {
+            debug!(window_id, "window closed but not tracked, ignoring");
+            return Ok(());
         };
+
+        // Clear focused window if the closed window was focused, to prevent
+        // move_window_to_monitor from referencing a stale ID.
+        if self.focused_window_id == Some(window_id) {
+            self.focused_window_id = None;
+        }
 
         let ws = tracked.workspace_id;
         let monitor_id = tracked.monitor_id;
@@ -329,13 +372,15 @@ impl<P: GnomeProxy> TilingEngine<P> {
         }
 
         // Only retile the surfaces that actually changed.
+        // If the monitor has a layout preset, apply that; otherwise fall back
+        // to stack tiling when the window was on the stack screen. This avoids
+        // conflicting layouts when a preset is set on the stack monitor.
         let stack_id = self.stack_monitor_id();
-        if monitor_id == stack_id {
-            self.tile_stack(ws).await?;
-        }
         if let Some(preset) = self.desktops.get(&ws).and_then(|d| d.get_layout(monitor_id)) {
             info!(monitor_id, ?preset, "monitor has layout preset, re-applying after close");
             self.apply_layout_to_monitor(ws, monitor_id).await?;
+        } else if monitor_id == stack_id {
+            self.tile_stack(ws).await?;
         }
 
         Ok(())
@@ -366,10 +411,10 @@ impl<P: GnomeProxy> TilingEngine<P> {
         window_id: u64,
         is_fullscreen: bool,
     ) -> ProxyResult<()> {
-        let ws = match self.windows.get_mut(&window_id) {
+        let (ws, monitor_id) = match self.windows.get_mut(&window_id) {
             Some(w) => {
                 w.is_fullscreen = is_fullscreen;
-                w.workspace_id
+                (w.workspace_id, w.monitor_id)
             }
             None => return Ok(()),
         };
@@ -377,13 +422,19 @@ impl<P: GnomeProxy> TilingEngine<P> {
         if is_fullscreen {
             self.desktop_mut(ws).remove_window(window_id);
         } else {
-            let is_tl = self.windows.get(&window_id).map_or(false, |w| w.is_toplevel);
+            let is_tl = self.windows.get(&window_id).is_some_and(|w| w.is_toplevel);
             if is_tl {
                 self.desktop_mut(ws).push_window(window_id);
             }
         }
 
-        self.tile_stack(ws).await?;
+        let stack_id = self.stack_monitor_id();
+        if monitor_id == stack_id {
+            self.tile_stack(ws).await?;
+        }
+        if self.desktops.get(&ws).and_then(|d| d.get_layout(monitor_id)).is_some() {
+            self.apply_layout_to_monitor(ws, monitor_id).await?;
+        }
         Ok(())
     }
 
@@ -391,6 +442,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
     ///
     /// If layout enforcement is active on the window's monitor and the window's
     /// current geometry differs from its expected layout position, snap it back.
+    #[allow(clippy::items_after_statements)]
     pub async fn handle_geometry_changed(
         &mut self,
         window_id: u64,
@@ -412,38 +464,35 @@ impl<P: GnomeProxy> TilingEngine<P> {
             }
         }
 
-        let (workspace_id, monitor_id) = match self.windows.get(&window_id) {
-            Some(w) => (w.workspace_id, w.monitor_id),
-            None => return Ok(()),
+        let Some(w) = self.windows.get(&window_id) else {
+            return Ok(());
         };
+        let (workspace_id, monitor_id) = (w.workspace_id, w.monitor_id);
 
-        let desktop = match self.desktops.get(&workspace_id) {
-            Some(d) => d,
-            None => return Ok(()),
+        let Some(desktop) = self.desktops.get(&workspace_id) else {
+            return Ok(());
         };
 
         if !desktop.is_enforced(monitor_id) {
             return Ok(());
         }
 
-        let preset = match desktop.get_layout(monitor_id) {
-            Some(p) => p,
-            None => return Ok(()),
+        let Some(preset) = desktop.get_layout(monitor_id) else {
+            return Ok(());
         };
 
-        let monitor_rect = match self.monitor_rect(monitor_id) {
-            Some(r) => r,
-            None => return Ok(()),
+        let Some(monitor_rect) = self.monitor_rect(monitor_id) else {
+            return Ok(());
         };
 
         let window_ids = self.windows_on_monitor(workspace_id, monitor_id);
         let positions = Self::compute_positions(preset, &window_ids, monitor_rect);
 
         // Find this window's expected position
-        let expected = match positions.iter().find(|(id, _)| *id == window_id) {
-            Some((_, rect)) => *rect,
-            None => return Ok(()),
+        let Some((_, expected)) = positions.iter().find(|(id, _)| *id == window_id) else {
+            return Ok(());
         };
+        let expected = *expected;
 
         // If geometry already matches, no snap-back needed
         if x == expected.x && y == expected.y && width == expected.width && height == expected.height
@@ -465,6 +514,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     /// Returns the current menu state.
+    #[must_use]
     pub fn menu_state(&self) -> MenuState {
         self.menu
     }
@@ -475,6 +525,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     /// Process a menu input, transitioning state and executing any resulting action.
+    #[allow(clippy::too_many_lines)]
     pub async fn handle_menu_input(&mut self, input: MenuInput) -> ProxyResult<()> {
         let old_state = self.menu;
         let (new_state, action) = self.menu.transition(input);
@@ -544,22 +595,19 @@ impl<P: GnomeProxy> TilingEngine<P> {
         workspace_id: u32,
         monitor_id: u32,
     ) -> ProxyResult<()> {
-        let desktop = match self.desktops.get(&workspace_id) {
-            Some(d) => d,
-            None => return Ok(()),
+        self.prune_desktop(workspace_id);
+
+        let Some(desktop) = self.desktops.get(&workspace_id) else {
+            return Ok(());
         };
 
-        let preset = match desktop.get_layout(monitor_id) {
-            Some(p) => p,
-            None => return Ok(()),
+        let Some(preset) = desktop.get_layout(monitor_id) else {
+            return Ok(());
         };
 
-        let monitor_rect = match self.monitor_rect(monitor_id) {
-            Some(r) => r,
-            None => {
-                warn!(monitor_id, "apply_layout: monitor not found");
-                return Ok(());
-            }
+        let Some(monitor_rect) = self.monitor_rect(monitor_id) else {
+            warn!(monitor_id, "apply_layout: monitor not found");
+            return Ok(());
         };
 
         let window_ids = self.windows_on_monitor(workspace_id, monitor_id);
@@ -612,6 +660,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     /// Returns the currently active workspace ID.
+    #[must_use]
     pub fn active_workspace(&self) -> u32 {
         self.active_workspace
     }
@@ -622,20 +671,24 @@ impl<P: GnomeProxy> TilingEngine<P> {
     /// Calls `proxy.move_resize_window` to fill the target monitor, updates
     /// the tracked window's `monitor_id`, and retiles affected monitors.
     pub async fn move_window_to_monitor(&mut self, target_monitor: u32) -> ProxyResult<()> {
-        let window_id = match self.focused_window_id {
-            Some(id) => id,
-            None => return Ok(()),
+        let Some(window_id) = self.focused_window_id else {
+            return Ok(());
         };
 
-        let target_rect = match self.monitor_rect(target_monitor) {
-            Some(r) => r,
-            None => return Ok(()),
+        let Some(target_rect) = self.monitor_rect(target_monitor) else {
+            return Ok(());
         };
 
-        let (workspace_id, source_monitor) = match self.windows.get(&window_id) {
-            Some(w) => (w.workspace_id, w.monitor_id),
-            None => return Ok(()),
+        let Some(w) = self.windows.get(&window_id) else {
+            return Ok(());
         };
+        let (workspace_id, source_monitor) = (w.workspace_id, w.monitor_id);
+
+        // No-op when the window is already on the target monitor.
+        if source_monitor == target_monitor {
+            debug!(window_id, target_monitor, "window already on target monitor, skipping move");
+            return Ok(());
+        }
 
         // Move the window to fill the target monitor and raise it
         self.proxy
@@ -663,11 +716,17 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     /// Returns the currently focused window ID, or `None` if no window has focus.
+    #[must_use]
     pub fn focused_window_id(&self) -> Option<u64> {
         self.focused_window_id
     }
 
     /// Updates the focused window ID. Called when the compositor reports a focus change.
+    ///
+    /// Stores any window ID unconditionally. A focus signal may arrive before
+    /// the corresponding `WindowOpened` event due to D-Bus signal ordering, so
+    /// filtering untracked IDs here would cause missed focus updates. The
+    /// `move_window_to_monitor` method already guards against untracked windows.
     pub fn handle_focus_changed(&mut self, window_id: u64) {
         self.focused_window_id = Some(window_id);
     }

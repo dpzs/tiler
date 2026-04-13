@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use tiler::config::StackScreenPosition;
 use tiler::daemon::run_daemon;
 use tiler::gnome::dbus_proxy::{MockGnomeProxy, MonitorInfo};
 use tiler::ipc::client::send_command;
@@ -38,7 +39,7 @@ async fn should_process_menu_command_and_respond_ok() {
 
     let proxy = make_proxy();
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -67,7 +68,7 @@ async fn should_handle_shutdown_gracefully() {
 
     let proxy = make_proxy();
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -100,7 +101,7 @@ async fn should_route_status_command() {
 
     let proxy = make_proxy();
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -132,7 +133,7 @@ async fn should_initialize_engine_on_startup() {
 
     let proxy = make_proxy();
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 

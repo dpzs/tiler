@@ -11,6 +11,7 @@ use tiler::ipc::protocol::{Command, Response};
 use tiler::menu::state::{MenuInput, MenuState};
 use tiler::model::{LayoutPreset, Rect};
 use tiler::tiling::engine::TilingEngine;
+use tiler::config::StackScreenPosition;
 use tiler::tiling::preset::apply_side_by_side;
 
 // ===========================================================================
@@ -62,7 +63,7 @@ async fn should_snap_back_after_menu_applies_layout_and_enables_enforcement() {
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 0 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, 1);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -141,7 +142,7 @@ async fn should_enforce_layout_through_window_open_close_and_geometry_change() {
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 1, workspace_id: 0 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, 1);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
 
@@ -228,7 +229,7 @@ async fn should_handle_full_ipc_command_sequence() {
 
     let proxy = make_proxy(two_monitors(), vec![]);
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, None, None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, None, None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -273,7 +274,7 @@ async fn should_preserve_layout_across_workspace_switches() {
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 1 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, 1);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
     engine.startup().await.unwrap();
 
     // Set SideBySide on workspace 0, monitor 1
@@ -333,7 +334,7 @@ async fn should_preserve_enforcement_across_workspace_switches() {
         WindowInfo { id: 3, title: "C".into(), app_class: "c".into(), monitor_id: 1, workspace_id: 1 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, 1);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
     engine.startup().await.unwrap();
 
     // Set SideBySide + enforcement on workspace 0, monitor 1
@@ -392,7 +393,7 @@ async fn should_shutdown_via_signal_after_processing_commands() {
 
     let proxy = make_proxy(two_monitors(), vec![]);
     let daemon = tokio::spawn(async move {
-        run_daemon(proxy, &sock2, 0, Some(rx), None).await
+        run_daemon(proxy, &sock2, StackScreenPosition::Left, Some(rx), None).await
     });
     tokio::time::sleep(Duration::from_millis(50)).await;
 

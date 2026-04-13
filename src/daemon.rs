@@ -4,6 +4,7 @@ use tokio::net::UnixListener;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
+use crate::config::StackScreenPosition;
 use crate::gnome::dbus_proxy::GnomeProxy;
 use crate::gnome::event::Event;
 use crate::ipc::protocol::{Command, Response, read_message, send_message};
@@ -18,15 +19,16 @@ use crate::tiling::engine::TilingEngine;
 /// handling).
 ///
 /// Any existing file at `socket_path` is removed before binding.
+#[allow(clippy::too_many_lines)]
 pub async fn run_daemon<P: GnomeProxy + 'static>(
     proxy: P,
     socket_path: &Path,
-    stack_screen_index: usize,
+    stack_position: StackScreenPosition,
     shutdown: Option<oneshot::Receiver<()>>,
     event_rx: Option<mpsc::UnboundedReceiver<Event>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    info!(stack_screen_index, "daemon starting");
-    let mut engine = TilingEngine::new(proxy, stack_screen_index);
+    info!(?stack_position, "daemon starting");
+    let mut engine = TilingEngine::new(proxy, stack_position);
     engine.startup().await?;
     info!(socket = %socket_path.display(), "startup complete, listening");
 
@@ -39,19 +41,22 @@ pub async fn run_daemon<P: GnomeProxy + 'static>(
     loop {
         tokio::select! {
             result = listener.accept() => {
-                let (stream, _) = result?;
+                let (stream, _) = match result {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        warn!(error = %e, "failed to accept IPC connection, continuing");
+                        continue;
+                    }
+                };
                 let (mut reader, mut writer) = stream.into_split();
                 debug!("IPC client connected");
 
                 loop {
                     tokio::select! {
                         cmd = read_message(&mut reader) => {
-                            let cmd: Command = match cmd {
-                                Ok(cmd) => cmd,
-                                Err(_) => {
-                                    debug!("IPC client disconnected");
-                                    break;
-                                }
+                            let Ok(cmd): Result<Command, _> = cmd else {
+                                debug!("IPC client disconnected");
+                                break;
                             };
 
                             info!(?cmd, "IPC command received");
@@ -67,17 +72,33 @@ pub async fn run_daemon<P: GnomeProxy + 'static>(
                                     }
                                 }
                                 Command::ApplyLayout { monitor, layout } => {
-                                    let input = MenuInput::Digit(layout);
-                                    engine.set_menu_state(crate::menu::state::MenuState::ZoomedIn(monitor));
-                                    match engine.handle_menu_input(input).await {
-                                        Ok(()) => {
-                                            info!(monitor, layout, "layout applied via CLI");
-                                            Response::Ok
+                                    // Validate layout digit: only 1-4 (layout presets),
+                                    // 9 (enforce on), and 0 (enforce off) are valid.
+                                    let valid = matches!(layout, 0..=4 | 9);
+                                    if valid {
+                                        let input = MenuInput::Digit(layout);
+                                        let prev_state = engine.menu_state();
+                                        engine.set_menu_state(
+                                            crate::menu::state::MenuState::ZoomedIn(monitor),
+                                        );
+                                        match engine.handle_menu_input(input).await {
+                                            Ok(()) => {
+                                                info!(monitor, layout, "layout applied via CLI");
+                                                Response::Ok
+                                            }
+                                            Err(e) => {
+                                                // Restore menu state so it does not get stuck
+                                                // in ZoomedIn after a failed CLI command.
+                                                engine.set_menu_state(prev_state);
+                                                error!(monitor, layout, error = %e, "apply layout failed");
+                                                Response::Error(e.to_string())
+                                            }
                                         }
-                                        Err(e) => {
-                                            error!(monitor, layout, error = %e, "apply layout failed");
-                                            Response::Error(e.to_string())
-                                        }
+                                    } else {
+                                        warn!(monitor, layout, "invalid layout digit");
+                                        Response::Error(format!(
+                                            "invalid layout digit {layout}: expected 0-4 or 9"
+                                        ))
                                     }
                                 }
                                 Command::Windows => {
@@ -124,7 +145,7 @@ pub async fn run_daemon<P: GnomeProxy + 'static>(
             } => {
                 dispatch_event(&mut engine, event).await;
             }
-            _ = async {
+            () = async {
                 match shutdown_rx.as_mut() {
                     Some(rx) => { let _ = rx.await; },
                     None => std::future::pending::<()>().await,
@@ -138,38 +159,44 @@ pub async fn run_daemon<P: GnomeProxy + 'static>(
     }
 }
 
+/// Dispatch a single event to the tiling engine.
+///
+/// Events that the engine already logs at INFO (e.g. `handle_window_opened`,
+/// `handle_window_closed`, `handle_workspace_changed`) are logged here at
+/// DEBUG to avoid double-logging in the log file.  Only events whose primary
+/// logging lives in this dispatcher use INFO.
 async fn dispatch_event<P: GnomeProxy>(engine: &mut TilingEngine<P>, event: Event) {
     match event {
         Event::WindowOpened { window_id, title, app_class, monitor_id } => {
-            info!(window_id, %title, %app_class, monitor_id, "WindowOpened");
+            debug!(window_id, %title, %app_class, monitor_id, "dispatching WindowOpened");
             if let Err(e) = engine.handle_window_opened(window_id, title, app_class, monitor_id).await {
                 error!(window_id, error = %e, "handle WindowOpened failed");
             }
         }
         Event::WindowClosed { window_id } => {
-            info!(window_id, "WindowClosed");
+            debug!(window_id, "dispatching WindowClosed");
             if let Err(e) = engine.handle_window_closed(window_id).await {
                 error!(window_id, error = %e, "handle WindowClosed failed");
             }
         }
         Event::WindowFocusChanged { window_id } => {
-            debug!(window_id, "FocusChanged");
+            debug!(window_id, "dispatching FocusChanged");
             engine.handle_focus_changed(window_id);
         }
         Event::WorkspaceChanged { workspace_id } => {
-            info!(workspace_id, "WorkspaceChanged");
+            debug!(workspace_id, "dispatching WorkspaceChanged");
             if let Err(e) = engine.handle_workspace_changed(workspace_id).await {
                 error!(workspace_id, error = %e, "handle WorkspaceChanged failed");
             }
         }
         Event::WindowFullscreenChanged { window_id, is_fullscreen } => {
-            info!(window_id, is_fullscreen, "FullscreenChanged");
+            debug!(window_id, is_fullscreen, "dispatching FullscreenChanged");
             if let Err(e) = engine.handle_fullscreen_changed(window_id, is_fullscreen).await {
                 error!(window_id, error = %e, "handle FullscreenChanged failed");
             }
         }
         Event::WindowGeometryChanged { window_id, x, y, width, height } => {
-            debug!(window_id, x, y, width, height, "GeometryChanged");
+            debug!(window_id, x, y, width, height, "dispatching GeometryChanged");
             if let Err(e) = engine.handle_geometry_changed(window_id, x, y, width, height).await {
                 error!(window_id, error = %e, "handle GeometryChanged failed");
             }

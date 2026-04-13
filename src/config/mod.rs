@@ -1,3 +1,3 @@
 mod schema;
 
-pub use schema::TilerConfig;
+pub use schema::{ConfigError, StackScreenPosition, TilerConfig};
