@@ -63,12 +63,13 @@ async fn should_snap_back_after_menu_applies_layout_and_enables_enforcement() {
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 0 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    // Stack on the left (monitor 0), so monitor 1 is a non-stack target
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
 
-    // Act — use menu to apply SideBySide on monitor 1
+    // Act — use menu to apply SideBySide on monitor 1 (non-stack)
     engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
     assert_eq!(engine.menu_state(), MenuState::Overview);
 
@@ -274,7 +275,8 @@ async fn should_preserve_layout_across_workspace_switches() {
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 1 },
     ];
     let proxy = make_proxy(monitors, windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    // Stack on left (monitor 0) so monitor 1 is non-stack and can receive layouts
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Set SideBySide on workspace 0, monitor 1

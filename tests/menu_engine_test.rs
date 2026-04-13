@@ -38,7 +38,7 @@ fn two_windows_on_monitor_1() -> Vec<WindowInfo> {
 #[tokio::test]
 async fn should_transition_to_overview_on_toggle_from_closed() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -58,7 +58,7 @@ async fn should_transition_to_overview_on_toggle_from_closed() {
 #[tokio::test]
 async fn should_transition_to_closed_on_toggle_from_overview() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open the menu
@@ -87,7 +87,7 @@ async fn should_transition_to_closed_on_toggle_from_overview() {
 #[tokio::test]
 async fn should_transition_to_zoomed_in_on_press_n() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open menu to Overview
@@ -106,7 +106,7 @@ async fn should_transition_to_zoomed_in_on_press_n() {
 async fn should_apply_layout_and_retile_on_digit() {
     let windows = two_windows_on_monitor_1();
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -146,7 +146,7 @@ async fn should_apply_layout_and_retile_on_digit() {
 async fn should_apply_fullscreen_layout_on_digit_1() {
     let windows = two_windows_on_monitor_1();
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -172,7 +172,7 @@ async fn should_apply_fullscreen_layout_on_digit_1() {
 async fn should_apply_top_bottom_layout_on_digit_3() {
     let windows = two_windows_on_monitor_1();
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -196,7 +196,7 @@ async fn should_apply_top_bottom_layout_on_digit_3() {
 async fn should_apply_quadrants_layout_on_digit_4() {
     let windows = two_windows_on_monitor_1();
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -223,7 +223,7 @@ async fn should_apply_quadrants_layout_on_digit_4() {
 async fn should_enable_enforcement_on_digit_9() {
     let windows = two_windows_on_monitor_1();
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -258,7 +258,7 @@ async fn should_enable_enforcement_on_digit_9() {
 async fn should_disable_enforcement_on_digit_0() {
     let windows = two_windows_on_monitor_1();
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -316,7 +316,7 @@ async fn should_handle_move_window_without_panic() {
 #[tokio::test]
 async fn should_call_show_menu_on_toggle_from_closed() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
@@ -330,7 +330,7 @@ async fn should_call_show_menu_on_toggle_from_closed() {
 #[tokio::test]
 async fn should_call_hide_menu_on_toggle_from_overview() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open menu
@@ -344,7 +344,7 @@ async fn should_call_hide_menu_on_toggle_from_overview() {
 #[tokio::test]
 async fn should_call_hide_menu_on_escape_from_overview() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open menu
@@ -358,7 +358,7 @@ async fn should_call_hide_menu_on_escape_from_overview() {
 #[tokio::test]
 async fn should_call_show_menu_zoomed_on_press_n() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open menu then zoom into monitor 1
@@ -373,7 +373,7 @@ async fn should_call_show_menu_zoomed_on_press_n() {
 #[tokio::test]
 async fn should_call_hide_menu_on_escape_from_zoomed() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open menu, zoom in, then Escape
@@ -387,7 +387,7 @@ async fn should_call_hide_menu_on_escape_from_zoomed() {
 #[tokio::test]
 async fn should_call_hide_menu_on_toggle_from_zoomed() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open menu, zoom in, then Toggle to close
@@ -404,7 +404,7 @@ async fn should_call_hide_menu_on_toggle_from_zoomed() {
 async fn should_call_hide_menu_on_digit_from_zoomed() {
     let windows = two_windows_on_monitor_1();
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -423,7 +423,7 @@ async fn should_call_hide_menu_on_shift_n_from_overview() {
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
     ];
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Open menu, then ShiftN(1) to move window
@@ -436,7 +436,7 @@ async fn should_call_hide_menu_on_shift_n_from_overview() {
 #[tokio::test]
 async fn should_not_call_show_or_hide_on_noop_input() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Escape when already Closed — should be a no-op
@@ -454,7 +454,7 @@ async fn should_not_call_show_or_hide_on_noop_input() {
 async fn should_complete_full_menu_lifecycle_with_correct_proxy_calls() {
     let windows = two_windows_on_monitor_1();
     let proxy = make_proxy(two_monitors(), windows);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
     engine.desktop_mut(0).append_window(1);
     engine.desktop_mut(0).append_window(2);
@@ -507,7 +507,7 @@ async fn should_complete_full_menu_lifecycle_with_correct_proxy_calls() {
 #[tokio::test]
 async fn should_track_multiple_open_close_cycles() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     // Cycle 1: open and close via toggle
@@ -535,7 +535,7 @@ async fn should_track_multiple_open_close_cycles() {
 #[tokio::test]
 async fn should_serialize_all_monitors_in_show_menu_json() {
     let proxy = make_proxy(two_monitors(), vec![]);
-    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Right);
+    let mut engine = TilingEngine::new(proxy, StackScreenPosition::Left);
     engine.startup().await.unwrap();
 
     engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();

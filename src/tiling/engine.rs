@@ -1,6 +1,6 @@
 //! Tiling engine: coordinates window tracking, layout enforcement, and menu state.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use tracing::{debug, info, warn};
@@ -40,6 +40,9 @@ pub struct TilingEngine<P: GnomeProxy> {
     /// arriving within a grace period after this are suppressed to avoid
     /// snap-back from async Mutter events.
     last_tiling_end: Option<Instant>,
+    /// Workspaces that have been tiled at least once. On first visit we tile
+    /// the stack; subsequent switches do NOT reflow windows.
+    visited_workspaces: HashSet<u32>,
 }
 
 impl<P: GnomeProxy> TilingEngine<P> {
@@ -61,6 +64,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             menu: MenuState::Closed,
             is_tiling: false,
             last_tiling_end: None,
+            visited_workspaces: HashSet::new(),
         }
     }
 
@@ -293,6 +297,7 @@ impl<P: GnomeProxy> TilingEngine<P> {
             });
         }
 
+        self.visited_workspaces.insert(self.active_workspace);
         self.tile_stack(self.active_workspace).await?;
         Ok(())
     }
@@ -387,21 +392,21 @@ impl<P: GnomeProxy> TilingEngine<P> {
     }
 
     /// Handle workspace change.
+    ///
+    /// Windows should already be in position from when they were originally
+    /// tiled. GNOME Shell manages workspace visibility. We only tile on the
+    /// first visit to a workspace (to handle windows that existed before the
+    /// daemon started).
     pub async fn handle_workspace_changed(&mut self, workspace_id: u32) -> ProxyResult<()> {
         info!(from = self.active_workspace, to = workspace_id, "workspace changed");
         self.active_workspace = workspace_id;
-        self.tile_stack(workspace_id).await?;
-        let monitor_ids: Vec<u32> = self
-            .desktops
-            .get(&workspace_id)
-            .map(|d| d.layout_presets.keys().copied().collect())
-            .unwrap_or_default();
-        if !monitor_ids.is_empty() {
-            info!(?monitor_ids, "re-applying layout presets for workspace");
+
+        if !self.visited_workspaces.contains(&workspace_id) {
+            self.visited_workspaces.insert(workspace_id);
+            info!(workspace_id, "first visit to workspace, tiling stack");
+            self.tile_stack(workspace_id).await?;
         }
-        for mid in monitor_ids {
-            self.apply_layout_to_monitor(workspace_id, mid).await?;
-        }
+
         Ok(())
     }
 
@@ -539,8 +544,19 @@ impl<P: GnomeProxy> TilingEngine<P> {
             self.proxy.show_menu(&monitors_json).await?;
         }
 
-        // ZoomIn: show zoomed view for a specific monitor
+        // ZoomIn: show zoomed view for a specific monitor.
+        // Stack screen is always a vertical stack — skip the layout picker
+        // and move the focused window to the stack directly.
         if let Some(MenuAction::ZoomIn(monitor_id)) = action {
+            if monitor_id == self.stack_monitor_id() {
+                self.menu = MenuState::Closed;
+                self.proxy.hide_menu().await?;
+                if let Some(wid) = self.focused_window_id {
+                    let ws = self.active_workspace;
+                    self.move_to_stack(wid, ws).await?;
+                }
+                return Ok(());
+            }
             let layouts = [
                 LayoutPreset::Fullscreen,
                 LayoutPreset::SideBySide,
@@ -572,6 +588,35 @@ impl<P: GnomeProxy> TilingEngine<P> {
                         _ => return Ok(()),
                     };
                     let ws = self.active_workspace;
+
+                    // Move focused window to the target monitor first (if
+                    // it is not already there) so the layout places it in
+                    // the primary slot.
+                    if let Some(wid) = self.focused_window_id {
+                        if let Some(w) = self.windows.get(&wid) {
+                            let source = w.monitor_id;
+                            if source != monitor_id {
+                                if let Some(rect) = self.monitor_rect(monitor_id) {
+                                    self.is_tiling = true;
+                                    self.proxy
+                                        .move_resize_window(wid, rect.x, rect.y, rect.width, rect.height)
+                                        .await?;
+                                    self.proxy.raise_window(wid).await?;
+                                    self.finish_tiling();
+                                }
+                                if let Some(w) = self.windows.get_mut(&wid) {
+                                    w.monitor_id = monitor_id;
+                                }
+                                // Push to front so it gets the primary layout slot
+                                self.desktop_mut(ws).push_window(wid);
+                                // Retile source if it was the stack screen
+                                if source == self.stack_monitor_id() {
+                                    self.tile_stack(ws).await?;
+                                }
+                            }
+                        }
+                    }
+
                     self.desktop_mut(ws).set_layout(monitor_id, preset);
                     self.apply_layout_to_monitor(ws, monitor_id).await?;
                 }
@@ -636,16 +681,32 @@ impl<P: GnomeProxy> TilingEngine<P> {
                 .await?;
         }
 
-        // Excess windows (not assigned a slot) get stacked behind the layout
-        // by moving them to fill the monitor — this prevents them from
-        // floating at stale positions and visually overlapping the layout.
+        // Excess windows not assigned a layout slot: return them to the
+        // stack screen (per mission rule) instead of stashing behind.
         let positioned_ids: Vec<u64> = positions.iter().map(|(id, _)| *id).collect();
-        for &wid in &window_ids {
-            if !positioned_ids.contains(&wid) {
+        let excess: Vec<u64> = window_ids
+            .iter()
+            .filter(|&&wid| !positioned_ids.contains(&wid))
+            .copied()
+            .collect();
+
+        let stack_id = self.stack_monitor_id();
+        let is_on_stack = monitor_id == stack_id;
+        for &wid in &excess {
+            if is_on_stack {
+                // On the stack screen itself, stash behind (can't return to self)
                 debug!(window_id = wid, "  layout -> stash excess behind layout");
                 self.proxy
                     .move_resize_window(wid, monitor_rect.x, monitor_rect.y, monitor_rect.width, monitor_rect.height)
                     .await?;
+            } else if let Some(stack_rect) = self.stack_screen_rect() {
+                debug!(window_id = wid, "  layout -> return excess to stack screen");
+                self.proxy
+                    .move_resize_window(wid, stack_rect.x, stack_rect.y, stack_rect.width, stack_rect.height)
+                    .await?;
+                if let Some(w) = self.windows.get_mut(&wid) {
+                    w.monitor_id = stack_id;
+                }
             }
         }
 
@@ -656,6 +717,12 @@ impl<P: GnomeProxy> TilingEngine<P> {
         }
 
         self.finish_tiling();
+
+        // If excess windows were returned to the stack, retile it
+        if !is_on_stack && !excess.is_empty() {
+            self.tile_stack(workspace_id).await?;
+        }
+
         Ok(())
     }
 

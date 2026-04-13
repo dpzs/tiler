@@ -70,7 +70,7 @@ async fn startup_called_twice_should_reinitialize() {
 // ===========================================================================
 
 #[tokio::test]
-async fn workspace_changed_to_same_workspace_retiles() {
+async fn workspace_changed_to_same_workspace_no_reflow() {
     let windows = vec![
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 0, workspace_id: 0 },
     ];
@@ -80,22 +80,15 @@ async fn workspace_changed_to_same_workspace_retiles() {
 
     let calls_before = engine.proxy().move_resize_calls().len();
 
-    // "Switch" to the same workspace
+    // "Switch" to the same workspace — already visited, should NOT retile
     engine.handle_workspace_changed(0).await.unwrap();
 
-    // The engine retiles the stack on workspace change (even if same ws).
-    // This is correct behavior: ensures windows are positioned after any
-    // external changes.
     let calls_after = engine.proxy().move_resize_calls().len();
-    assert!(
-        calls_after > calls_before,
-        "workspace_changed to same workspace should still retile (calls_before={calls_before}, calls_after={calls_after})"
-    );
     assert_eq!(
-        engine.active_workspace(),
-        0,
-        "active workspace should remain 0"
+        calls_after, calls_before,
+        "workspace_changed to already-visited workspace should NOT retile"
     );
+    assert_eq!(engine.active_workspace(), 0);
 }
 
 // ===========================================================================
@@ -103,7 +96,7 @@ async fn workspace_changed_to_same_workspace_retiles() {
 // ===========================================================================
 
 #[tokio::test]
-async fn workspace_change_reapplies_layout_presets() {
+async fn workspace_change_does_not_reapply_layout_presets() {
     let windows = vec![
         WindowInfo { id: 1, title: "A".into(), app_class: "a".into(), monitor_id: 1, workspace_id: 0 },
         WindowInfo { id: 2, title: "B".into(), app_class: "b".into(), monitor_id: 1, workspace_id: 0 },
@@ -117,25 +110,18 @@ async fn workspace_change_reapplies_layout_presets() {
 
     let calls_before = engine.proxy().move_resize_calls().len();
 
-    // Switch away and back
+    // Switch away and back — both workspaces already visited after first switch
     engine.handle_workspace_changed(1).await.unwrap();
+    // ws 1 is first visit → tiles stack (no windows on stack for ws 1, so no calls)
+    let calls_after_first = engine.proxy().move_resize_calls().len();
+
     engine.handle_workspace_changed(0).await.unwrap();
+    let calls_after_second = engine.proxy().move_resize_calls().len();
 
-    let calls_after = engine.proxy().move_resize_calls().len();
-
-    // Should have re-applied SideBySide on monitor 1 when switching back to ws 0
-    let post_switch_calls: Vec<_> = engine
-        .proxy()
-        .move_resize_calls()
-        .iter()
-        .skip(calls_before)
-        .filter(|c| c.1 == 1920) // x=1920 means monitor 1
-        .collect();
-
-    assert!(
-        !post_switch_calls.is_empty(),
-        "workspace change back to ws 0 should re-apply SideBySide on monitor 1 (got {} total new calls)",
-        calls_after - calls_before
+    // Switching back to ws 0 (already visited) should NOT re-apply presets
+    assert_eq!(
+        calls_after_second, calls_after_first,
+        "returning to already-visited workspace should NOT retile or re-apply presets"
     );
 }
 

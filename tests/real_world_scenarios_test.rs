@@ -137,21 +137,22 @@ async fn workspace_switch_retiles_correct_windows() {
 
     let calls_after_startup = engine.proxy().move_resize_calls().len();
 
-    // Switch to workspace 1
+    // Switch to workspace 1 (first visit) — should tile window 2
     engine.handle_workspace_changed(1).await.unwrap();
 
-    // The retile should only position window 2 (on ws 1)
     let new_calls: Vec<_> = engine.proxy().move_resize_calls()[calls_after_startup..].to_vec();
     let tiled_ids: Vec<u64> = new_calls.iter().map(|c| c.0).collect();
-    assert!(tiled_ids.contains(&2), "window 2 should be tiled on workspace 1");
+    assert!(tiled_ids.contains(&2), "window 2 should be tiled on workspace 1 (first visit)");
 
-    // Switch back to workspace 0
+    // Switch back to workspace 0 (already visited) — should NOT retile
     let calls_before = engine.proxy().move_resize_calls().len();
     engine.handle_workspace_changed(0).await.unwrap();
 
-    let new_calls: Vec<_> = engine.proxy().move_resize_calls()[calls_before..].to_vec();
-    let tiled_ids: Vec<u64> = new_calls.iter().map(|c| c.0).collect();
-    assert!(tiled_ids.contains(&1), "window 1 should be tiled on workspace 0");
+    let calls_after = engine.proxy().move_resize_calls().len();
+    assert_eq!(
+        calls_after, calls_before,
+        "returning to already-visited workspace 0 should not retile"
+    );
 }
 
 // ===========================================================================
@@ -235,26 +236,23 @@ async fn preset_layout_reapplies_after_middle_window_close() {
     let calls_before = engine.proxy().move_resize_calls().len();
     engine.handle_window_closed(11).await.unwrap();
 
-    // Layout should re-apply for the remaining 2 windows on monitor 1
+    // Layout re-applies after close. With SideBySide (2 slots) and 3 windows,
+    // the excess (window 10) was already returned to stack when window 12 opened.
+    // After closing window 11, only window 12 remains on monitor 1.
     let post_close_calls: Vec<_> = engine.proxy().move_resize_calls()[calls_before..].to_vec();
     let mon1_calls: Vec<_> = post_close_calls.iter().filter(|c| c.1 >= 1920).collect();
     assert!(
-        mon1_calls.len() >= 2,
-        "at least 2 windows should be repositioned on monitor 1 after close, got {}",
+        !mon1_calls.is_empty(),
+        "at least 1 window should be repositioned on monitor 1 after close, got {}",
         mon1_calls.len()
     );
 
-    // Verify the remaining windows are positioned as SideBySide on monitor 1
-    // Left half: x=1920, w=960; Right half: x=2880, w=960
-    let win10_call = mon1_calls.iter().find(|c| c.0 == 10);
     let win12_call = mon1_calls.iter().find(|c| c.0 == 12);
-    assert!(win10_call.is_some(), "window 10 should be repositioned");
-    assert!(win12_call.is_some(), "window 12 should be repositioned");
+    assert!(win12_call.is_some(), "window 12 should be repositioned on monitor 1");
 
     // Desktop should no longer contain window 11
     let desktop = engine.desktop_ref(0).unwrap();
     assert!(!desktop.stack_windows.contains(&11), "closed window 11 must be removed");
-    assert_eq!(desktop.stack_windows.iter().filter(|&&w| w == 10 || w == 12).count(), 2);
 }
 
 #[tokio::test]
@@ -411,7 +409,13 @@ async fn full_menu_flow_zoom_apply_layout_then_move_window() {
     let desktop = engine.desktop_ref(0).unwrap();
     assert_eq!(desktop.get_layout(1), Some(LayoutPreset::SideBySide));
 
-    // --- Flow 2: Open menu -> Shift+1 to move focused window to monitor 1 ---
+    // With the new behavior, ApplyLayout also moves the focused window
+    // to the target monitor. Verify window 1 was moved to monitor 1.
+    let all_calls = engine.proxy().move_resize_calls();
+    let win1_on_mon1 = all_calls.iter().find(|c| c.0 == 1 && c.1 >= 1920);
+    assert!(win1_on_mon1.is_some(), "window 1 should be moved to monitor 1 via ApplyLayout");
+
+    // --- Flow 2: Shift+1 is now a no-op since window is already on monitor 1 ---
 
     let calls_before_move = engine.proxy().move_resize_calls().len();
 
@@ -419,15 +423,10 @@ async fn full_menu_flow_zoom_apply_layout_then_move_window() {
     engine.handle_menu_input(MenuInput::ToggleMenu).await.unwrap();
     assert_eq!(engine.menu_state(), MenuState::Overview);
 
-    // Shift+1 = move window to monitor 1
+    // Shift+1 = move window to monitor 1 (already there, so no-op)
     engine.handle_menu_input(MenuInput::ShiftN(1)).await.unwrap();
     assert_eq!(engine.menu_state(), MenuState::Closed, "menu should close after move");
     assert_eq!(engine.proxy().hide_menu_count(), 2, "menu hidden a second time");
-
-    // Verify window was moved to monitor 1
-    let move_calls: Vec<_> = engine.proxy().move_resize_calls()[calls_before_move..].to_vec();
-    let win1_on_mon1 = move_calls.iter().find(|c| c.0 == 1 && c.1 >= 1920);
-    assert!(win1_on_mon1.is_some(), "window 1 should be moved to monitor 1 (x >= 1920)");
 }
 
 #[tokio::test]
